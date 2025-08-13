@@ -1,0 +1,50 @@
+ECG ANOMALY DETECTION MODEL EVALUATION SUMMARY
+==================================================
+
+PERFORMANCE LEADERS:
+🏆 Best Accuracy: LSTM (0.9412)
+🏆 Best F1 Score: LSTM (0.9414)
+🏆 Best AUC Score: LSTM (0.9849)
+⚡ Fastest Training: HYBRID_CNN_LSTM (0.24 hours)
+⚡ Fastest Inference: CNN1D (0.796s)
+💡 Most Parameter Efficient: CNN1D (Accuracy/M-params: 1.329)
+
+DETAILED ANALYSIS:
+
+RESNET1D:
+  • Accuracy: 0.8937
+  • F1 Score: 0.8943
+  • AUC Score: 0.9579
+  • Training Time: 0.58 hours
+  • Inference Time: 1.769 seconds
+  • Parameters: 3.85M
+
+HYBRID_CNN_LSTM:
+  • Accuracy: 0.9151
+  • F1 Score: 0.9152
+  • AUC Score: 0.9716
+  • Training Time: 0.24 hours
+  • Inference Time: 0.867 seconds
+  • Parameters: 1.04M
+
+CNN1D:
+  • Accuracy: 0.9369
+  • F1 Score: 0.9369
+  • AUC Score: 0.9808
+  • Training Time: 0.83 hours
+  • Inference Time: 0.796 seconds
+  • Parameters: 0.71M
+
+LSTM:
+  • Accuracy: 0.9412
+  • F1 Score: 0.9414
+  • AUC Score: 0.9849
+  • Training Time: 0.83 hours
+  • Inference Time: 5.514 seconds
+  • Parameters: 0.90M
+
+RECOMMENDATIONS:
+🌟 For highest accuracy: Use LSTM model
+🌟 For balanced performance: Use CNN1D model
+🌟 For fastest training: Use Hybrid CNN-LSTM model
+🌟 For real-time inference: Use CNN1D or Hybrid CNN-LSTM model

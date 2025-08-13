@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ECG Anomaly Detection Model Evaluation Results</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background-color: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 0 20px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #2c3e50;
+            text-align: center;
+            margin-bottom: 30px;
+            font-size: 2.5em;
+            border-bottom: 3px solid #3498db;
+            padding-bottom: 15px;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 40px;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            border-left: 4px solid #3498db;
+            padding-left: 15px;
+        }
+        .chart-container {
+            text-align: center;
+            margin: 30px 0;
+            padding: 20px;
+            background-color: #fafafa;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+        .chart-container img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 5px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .summary-section {
+            background-color: #ecf0f1;
+            padding: 25px;
+            border-radius: 8px;
+            margin: 30px 0;
+            border-left: 5px solid #27ae60;
+        }
+        .summary-section h3 {
+            color: #27ae60;
+            margin-top: 0;
+            font-size: 1.4em;
+        }
+        .highlight {
+            background-color: #fff3cd;
+            padding: 15px;
+            border-radius: 5px;
+            border-left: 4px solid #ffc107;
+            margin: 15px 0;
+        }
+        .model-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        .model-card {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            border-top: 4px solid #3498db;
+        }
+        .model-card h4 {
+            color: #2c3e50;
+            margin-top: 0;
+            font-size: 1.3em;
+        }
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            margin: 8px 0;
+            padding: 5px 0;
+            border-bottom: 1px solid #ecf0f1;
+        }
+        .metric:last-child {
+            border-bottom: none;
+        }
+        .metric-label {
+            font-weight: 600;
+            color: #34495e;
+        }
+        .metric-value {
+            color: #27ae60;
+            font-weight: bold;
+        }
+        .footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 20px;
+            border-top: 2px solid #ecf0f1;
+            color: #7f8c8d;
+        }
+        .nav-menu {
+            background-color: #34495e;
+            padding: 15px 0;
+            margin: -30px -30px 30px -30px;
+            border-radius: 10px 10px 0 0;
+        }
+        .nav-menu ul {
+            list-style: none;
+            margin: 0;
+            padding: 0;
+            text-align: center;
+        }
+        .nav-menu li {
+            display: inline-block;
+            margin: 0 15px;
+        }
+        .nav-menu a {
+            color: white;
+            text-decoration: none;
+            font-weight: 500;
+            padding: 8px 15px;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        .nav-menu a:hover {
+            background-color: #2c3e50;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav class="nav-menu">
+            <ul>
+                <li><a href="#overview">Overview</a></li>
+                <li><a href="#performance">Performance</a></li>
+                <li><a href="#radar">Radar Chart</a></li>
+                <li><a href="#efficiency">Efficiency</a></li>
+                <li><a href="#inference">Inference Speed</a></li>
+                <li><a href="#table">Comparison Table</a></li>
+            </ul>
+        </nav>
+
+        <h1>🫀 ECG Anomaly Detection Model Evaluation Results</h1>
+        
+        <div id="overview" class="summary-section">
+            <h3>📊 Evaluation Overview</h3>
+            <p>This comprehensive evaluation compares four deep learning models for ECG anomaly detection:</p>
+            <div class="model-grid">
+                <div class="model-card">
+                    <h4>🏆 LSTM</h4>
+                    <div class="metric">
+                        <span class="metric-label">Accuracy:</span>
+                        <span class="metric-value">94.12%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">F1 Score:</span>
+                        <span class="metric-value">94.14%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">AUC Score:</span>
+                        <span class="metric-value">98.49%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Parameters:</span>
+                        <span class="metric-value">0.90M</span>
+                    </div>
+                </div>
+                
+                <div class="model-card">
+                    <h4>🥈 CNN1D</h4>
+                    <div class="metric">
+                        <span class="metric-label">Accuracy:</span>
+                        <span class="metric-value">93.69%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">F1 Score:</span>
+                        <span class="metric-value">93.69%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">AUC Score:</span>
+                        <span class="metric-value">98.08%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Parameters:</span>
+                        <span class="metric-value">0.71M</span>
+                    </div>
+                </div>
+                
+                <div class="model-card">
+                    <h4>🥉 Hybrid CNN-LSTM</h4>
+                    <div class="metric">
+                        <span class="metric-label">Accuracy:</span>
+                        <span class="metric-value">91.51%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">F1 Score:</span>
+                        <span class="metric-value">91.52%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">AUC Score:</span>
+                        <span class="metric-value">97.16%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Parameters:</span>
+                        <span class="metric-value">1.04M</span>
+                    </div>
+                </div>
+                
+                <div class="model-card">
+                    <h4>ResNet1D</h4>
+                    <div class="metric">
+                        <span class="metric-label">Accuracy:</span>
+                        <span class="metric-value">89.37%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">F1 Score:</span>
+                        <span class="metric-value">89.43%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">AUC Score:</span>
+                        <span class="metric-value">95.79%</span>
+                    </div>
+                    <div class="metric">
+                        <span class="metric-label">Parameters:</span>
+                        <span class="metric-value">3.85M</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="highlight">
+            <strong>🎯 Key Findings:</strong>
+            <ul>
+                <li><strong>Best Overall Performance:</strong> LSTM model achieves the highest accuracy (94.12%) and AUC score (98.49%)</li>
+                <li><strong>Most Efficient:</strong> CNN1D offers the best balance of performance and parameter efficiency</li>
+                <li><strong>Fastest Training:</strong> Hybrid CNN-LSTM trains in just 0.24 hours</li>
+                <li><strong>Fastest Inference:</strong> CNN1D provides the quickest inference at 0.796 seconds</li>
+            </ul>
+        </div>
+
+        <h2 id="performance">📈 Performance Comparison</h2>
+        <div class="chart-container">
+            <img src="results/visualization/performance_comparison.png" alt="Performance Comparison Chart">
+        </div>
+        <p>This chart shows the key performance metrics across all four models. The LSTM model consistently achieves the highest scores in accuracy, F1 score, and AUC, while the Hybrid CNN-LSTM model demonstrates the fastest training time.</p>
+
+        <h2 id="radar">🎯 Radar Chart Comparison</h2>
+        <div class="chart-container">
+            <img src="results/visualization/radar_chart_comparison.png" alt="Radar Chart Comparison">
+        </div>
+        <p>The radar chart provides a comprehensive view of all performance metrics simultaneously. The LSTM model shows the most balanced and highest overall performance across all metrics.</p>
+
+        <h2 id="efficiency">⚡ Efficiency Analysis</h2>
+        <div class="chart-container">
+            <img src="results/visualization/efficiency_analysis.png" alt="Efficiency Analysis">
+        </div>
+        <p>These scatter plots analyze the trade-offs between model complexity/training time and accuracy. The CNN1D model offers excellent parameter efficiency, while the Hybrid CNN-LSTM provides the best training time efficiency.</p>
+
+        <h2 id="inference">🚀 Inference Speed Analysis</h2>
+        <div class="chart-container">
+            <img src="results/visualization/inference_speed_analysis.png" alt="Inference Speed Analysis">
+        </div>
+        <p>For real-time applications, inference speed is crucial. The CNN1D and Hybrid CNN-LSTM models offer the fastest inference times while maintaining good accuracy.</p>
+
+        <h2 id="table">📋 Comprehensive Comparison Table</h2>
+        <div class="chart-container">
+            <img src="results/visualization/comprehensive_table.png" alt="Comprehensive Comparison Table">
+        </div>
+        <p>This detailed table summarizes all key metrics for easy comparison. Green highlighting indicates the best performance in each category.</p>
+
+        <div class="summary-section">
+            <h3>🎯 Recommendations</h3>
+            <ul>
+                <li><strong>🏆 For Highest Accuracy:</strong> Use LSTM model (94.12% accuracy, 98.49% AUC)</li>
+                <li><strong>⚖️ For Balanced Performance:</strong> Use CNN1D model (good accuracy with fastest inference)</li>
+                <li><strong>⚡ For Fastest Training:</strong> Use Hybrid CNN-LSTM model (0.24 hours training time)</li>
+                <li><strong>🚀 For Real-time Inference:</strong> Use CNN1D or Hybrid CNN-LSTM model (< 1 second inference)</li>
+                <li><strong>💡 For Parameter Efficiency:</strong> Use CNN1D model (best accuracy per million parameters)</li>
+            </ul>
+        </div>
+
+        <div class="footer">
+            <p>📊 Generated by ECG Anomaly Detection Model Evaluation System</p>
+            <p>🕒 All models trained and evaluated on the same dataset for fair comparison</p>
+        </div>
+    </div>
+</body>
+</html>
