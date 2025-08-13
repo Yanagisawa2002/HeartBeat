@@ -1,3 +1,6 @@
+[](./results/visualization/comprehensive_table.png)
+
+
 # 🫀 ECG Anomaly Detection Project
 
 A deep learning-based electrocardiogram anomaly detection system that implements comparative analysis of four different neural network models.
