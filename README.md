@@ -1,4 +1,4 @@
-[](./results/visualization/comprehensive_table.png)
+![](./results/visualization/comprehensive_table.png)
 
 
 # 🫀 ECG Anomaly Detection Project
