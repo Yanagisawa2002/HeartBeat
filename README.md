@@ -28,7 +28,6 @@ HeartBeat/
 ├── 📄 requirements.txt                     # Dependencies list
 ├── 📄 setup.py                            # Installation configuration
 ├── 📄 .gitignore                          # Git ignore file
-├── 📄 GITHUB_DEPLOYMENT.md                # GitHub deployment guide
 ├── 📄 view_results.html                   # Local results display page
 ├── 📄 model_training_evaluation.ipynb     # Complete training evaluation Notebook
 ├── 📄 comprehensive_model_evaluation.py   # Comprehensive model evaluation script
@@ -45,12 +44,6 @@ HeartBeat/
 │   └── 📄 run_comparison.py               # Run comparison
 ├── 📁 data/                               # Data directory
 │   ├── 📁 processed/                      # Preprocessed data
-│   │   ├── X_train.npy
-│   │   ├── X_val.npy
-│   │   ├── X_test.npy
-│   │   ├── y_train.npy
-│   │   ├── y_val.npy
-│   │   └── y_test.npy
 │   └── 📁 raw/                            # Raw data
 ├── 📁 results/                            # Results files
 │   ├── 📁 comparison/                     # Model comparison results
