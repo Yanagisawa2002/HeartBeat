@@ -8,6 +8,8 @@ Useful result artifacts included in this repository:
 
 - [docs/EVALUATION_RESULTS.md](docs/EVALUATION_RESULTS.md)
 - [results/comparison/model_comparison_results.csv](results/comparison/model_comparison_results.csv)
+- [results/visualization/classification_metrics_comparison.png](results/visualization/classification_metrics_comparison.png)
+- [results/visualization/performance_efficiency_tradeoff.png](results/visualization/performance_efficiency_tradeoff.png)
 - [results/visualization/comprehensive_table.png](results/visualization/comprehensive_table.png)
 
 ## Problem Statement
@@ -33,15 +35,15 @@ At the same time, this task is much simpler than real clinical ECG interpretatio
 
 ```text
 .
-├── README.md
-├── requirements.txt
-├── configs/
-├── data/
-├── docs/
-├── notebooks/
-├── results/
-├── scripts/
-└── src/
+|-- README.md
+|-- requirements.txt
+|-- configs/
+|-- data/
+|-- docs/
+|-- notebooks/
+|-- results/
+|-- scripts/
+`-- src/
 ```
 
 - [src/](src): core data loading, model definitions, benchmark workflow, and CLI
@@ -178,9 +180,19 @@ The committed comparison artifact in [results/comparison/model_comparison_result
 
 In the committed benchmark snapshot, **LSTM** achieved the strongest discrimination performance across the reported classification metrics, while **CNN1D** provided the best practical efficiency trade-off in terms of parameter count and reported inference time. **ResNet1D** was the largest model and the weakest performer in this comparison, and **Hybrid CNN-LSTM** occupied a middle position without clearly outperforming the simpler CNN1D baseline.
 
-Visual summary:
+The figures below are generated directly from [results/comparison/model_comparison_results.csv](results/comparison/model_comparison_results.csv) using [scripts/visualize_all_models.py](scripts/visualize_all_models.py).
 
-![](./results/visualization/comprehensive_table.png)
+### Benchmark Visualizations
+
+![Classification metrics comparison](results/visualization/classification_metrics_comparison.png)
+
+The classification metrics are tightly clustered for the two strongest baselines, with **LSTM** holding a small but consistent lead over **CNN1D** across Accuracy, F1, and ROC-AUC.
+
+![Performance-efficiency trade-off](results/visualization/performance_efficiency_tradeoff.png)
+
+The trade-off plot makes the practical recommendation clearer: **CNN1D** retains near-best discrimination performance with lower model size and much lower reported inference time than **LSTM**, while **ResNet1D** is both larger and weaker in this committed result snapshot.
+
+![Committed benchmark snapshot table](results/visualization/comprehensive_table.png)
 
 I treat the discrimination metrics above as the most useful summary. Some training-time fields in the repository are inconsistent across scripts, so they should be interpreted more cautiously than accuracy, F1, or AUC.
 

@@ -1,11 +1,15 @@
 #!/usr/bin/env python3
 """
-Generate benchmark visualizations from the committed comparison CSV.
+Generate curated benchmark visualizations from the committed comparison CSV.
 
-This script is intentionally report-oriented. It reads the committed model
-comparison table, treats known placeholder training times as missing, and
-writes a consistent set of figures and a short text summary under
-results/visualization/.
+The public repository keeps a small set of figures that are useful in a
+portfolio setting:
+    - classification_metrics_comparison.png
+    - performance_efficiency_tradeoff.png
+    - comprehensive_table.png
+
+These figures are derived directly from
+results/comparison/model_comparison_results.csv.
 """
 
 from __future__ import annotations
@@ -22,373 +26,230 @@ import seaborn as sns
 warnings.filterwarnings("ignore")
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
+RESULTS_PATH = ROOT_DIR / "results" / "comparison" / "model_comparison_results.csv"
+OUTPUT_DIR = ROOT_DIR / "results" / "visualization"
 
-plt.style.use("seaborn-v0_8")
-sns.set_palette("husl")
-plt.rcParams["figure.figsize"] = (12, 8)
-plt.rcParams["font.size"] = 12
-plt.rcParams["axes.titlesize"] = 14
+DISPLAY_NAMES = {
+    "CNN1D": "CNN1D",
+    "LSTM": "LSTM",
+    "RESNET1D": "ResNet1D",
+    "HYBRID_CNN_LSTM": "Hybrid CNN-LSTM",
+}
+
+MODEL_COLORS = {
+    "CNN1D": "#1b9e77",
+    "LSTM": "#d95f02",
+    "ResNet1D": "#7570b3",
+    "Hybrid CNN-LSTM": "#e7298a",
+}
+
+METRIC_COLORS = {
+    "Accuracy": "#1b9e77",
+    "F1 Score": "#7570b3",
+    "AUC Score": "#d95f02",
+}
+
+
+plt.style.use("seaborn-v0_8-whitegrid")
+sns.set_context("talk")
+plt.rcParams["figure.figsize"] = (12, 7)
+plt.rcParams["axes.titlesize"] = 15
 plt.rcParams["axes.labelsize"] = 12
-plt.rcParams["xtick.labelsize"] = 10
-plt.rcParams["ytick.labelsize"] = 10
-plt.rcParams["legend.fontsize"] = 11
+plt.rcParams["legend.fontsize"] = 10
 
 
-def load_model_results() -> pd.DataFrame | None:
-    results_path = ROOT_DIR / "results" / "comparison" / "model_comparison_results.csv"
-    if not results_path.exists():
-        print(f"Results file not found: {results_path}")
-        return None
+def load_model_results() -> pd.DataFrame:
+    if not RESULTS_PATH.exists():
+        raise FileNotFoundError(f"Results file not found: {RESULTS_PATH}")
 
-    df = pd.read_csv(results_path)
+    df = pd.read_csv(RESULTS_PATH)
 
-    # The committed snapshot uses 3000.0 as a placeholder for some training times.
-    placeholder_mask = df["Training Time (s)"].eq(3000.0) & df["Model"].isin(["CNN1D", "LSTM"])
-    df.loc[placeholder_mask, "Training Time (s)"] = np.nan
+    if "Training Time (s)" in df.columns:
+        placeholder_mask = df["Training Time (s)"].eq(3000.0) & df["Model"].isin(["CNN1D", "LSTM"])
+        df.loc[placeholder_mask, "Training Time (s)"] = np.nan
 
-    print("Loaded model results:")
-    print(df)
+    df["Display Model"] = df["Model"].map(DISPLAY_NAMES).fillna(df["Model"])
     return df
 
 
-def create_performance_comparison(df: pd.DataFrame, save_dir: Path) -> None:
-    fig, axes = plt.subplots(2, 2, figsize=(16, 12))
-    fig.suptitle("Normal-vs-Abnormal ECG Classification Model Comparison", fontsize=18, fontweight="bold")
-
-    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"]
-
-    metrics = [
-        ("Accuracy", axes[0, 0], (0.85, 0.95)),
-        ("F1 Score", axes[0, 1], (0.85, 0.95)),
-        ("AUC Score", axes[1, 0], (0.95, 0.99)),
-    ]
-
-    for column, axis, y_limits in metrics:
-        bars = axis.bar(df["Model"], df[column], color=colors, alpha=0.8)
-        axis.set_title(f"{column} Comparison", fontweight="bold")
-        axis.set_ylabel(column)
-        axis.set_ylim(*y_limits)
-        axis.tick_params(axis="x", rotation=45)
-        for bar, value in zip(bars, df[column]):
-            axis.text(
-                bar.get_x() + bar.get_width() / 2.0,
-                value + 0.002,
-                f"{value:.4f}",
-                ha="center",
-                va="bottom",
-                fontweight="bold",
-            )
-
-    training_hours = df["Training Time (s)"] / 3600
-    bars = axes[1, 1].bar(df["Model"], training_hours, color=colors, alpha=0.8)
-    axes[1, 1].set_title("Training Time Comparison", fontweight="bold")
-    axes[1, 1].set_ylabel("Training Time (hours)")
-    axes[1, 1].tick_params(axis="x", rotation=45)
-    for bar, value in zip(bars, training_hours):
-        if pd.notna(value):
-            axes[1, 1].text(
-                bar.get_x() + bar.get_width() / 2.0,
-                value + 0.02,
-                f"{value:.2f}h",
-                ha="center",
-                va="bottom",
-                fontweight="bold",
-            )
-        else:
-            axes[1, 1].text(
-                bar.get_x() + bar.get_width() / 2.0,
-                0.02,
-                "NA",
-                ha="center",
-                va="bottom",
-                fontweight="bold",
-            )
-
-    plt.tight_layout()
-    save_path = save_dir / "performance_comparison.png"
-    plt.savefig(save_path, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Performance comparison saved to: {save_path}")
-
-
-def create_radar_chart(df: pd.DataFrame, save_dir: Path) -> None:
-    metrics = ["Accuracy", "F1 Score", "AUC Score"]
-    angles = np.linspace(0, 2 * np.pi, len(metrics), endpoint=False).tolist()
-    angles += angles[:1]
-
-    fig, ax = plt.subplots(figsize=(10, 10), subplot_kw=dict(polar=True))
-    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"]
-
-    for color, (_, row) in zip(colors, df.iterrows()):
-        values = [row[metric] for metric in metrics]
-        values += values[:1]
-        ax.plot(angles, values, "o-", linewidth=2, label=row["Model"], color=color)
-        ax.fill(angles, values, alpha=0.15, color=color)
-
-    ax.set_xticks(angles[:-1])
-    ax.set_xticklabels(metrics)
-    ax.set_ylim(0.85, 1.0)
-    ax.set_title("Classification Metric Radar Chart", size=16, fontweight="bold", pad=20)
-    ax.legend(loc="upper right", bbox_to_anchor=(1.25, 1.1))
-
-    save_path = save_dir / "radar_chart_comparison.png"
-    plt.savefig(save_path, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Radar chart saved to: {save_path}")
-
-
-def create_efficiency_analysis(df: pd.DataFrame, save_dir: Path) -> None:
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 7))
-    fig.suptitle("Model Efficiency Analysis", fontsize=16, fontweight="bold")
-
-    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"]
-
-    params_m = df["Parameters"] / 1_000_000
-    ax1.scatter(params_m, df["Accuracy"], c=colors, s=150, alpha=0.7, edgecolors="black")
-    ax1.set_xlabel("Parameters (Millions)")
-    ax1.set_ylabel("Accuracy")
-    ax1.set_title("Parameter Efficiency\n(Accuracy vs Model Size)")
-    ax1.grid(True, alpha=0.3)
-    for index, model in enumerate(df["Model"]):
-        ax1.annotate(
-            model,
-            (params_m.iloc[index], df["Accuracy"].iloc[index]),
-            xytext=(8, 8),
-            textcoords="offset points",
-            fontsize=10,
-            color="black",
-        )
-
-    training_df = df.dropna(subset=["Training Time (s)"]).copy()
-    if not training_df.empty:
-        training_hours = training_df["Training Time (s)"] / 3600
-        training_colors = [colors[i] for i in training_df.index]
-        ax2.scatter(training_hours, training_df["Accuracy"], c=training_colors, s=150, alpha=0.7, edgecolors="black")
-        ax2.set_xlabel("Training Time (Hours)")
-        ax2.set_ylabel("Accuracy")
-        ax2.set_title("Training Efficiency\n(Accuracy vs Training Time)")
-        ax2.grid(True, alpha=0.3)
-        for idx, (_, row) in enumerate(training_df.iterrows()):
-            ax2.annotate(
-                row["Model"],
-                (training_hours.iloc[idx], row["Accuracy"]),
-                xytext=(8, 8),
-                textcoords="offset points",
-                fontsize=10,
-                color="black",
-            )
-    else:
-        ax2.axis("off")
-        ax2.text(
-            0.5,
-            0.5,
-            "Training-time comparison unavailable\nfor this result snapshot",
+def annotate_bars(ax: plt.Axes, offset: float = 0.0012) -> None:
+    for patch in ax.patches:
+        height = patch.get_height()
+        if np.isnan(height):
+            continue
+        ax.text(
+            patch.get_x() + patch.get_width() / 2.0,
+            height + offset,
+            f"{height:.4f}",
             ha="center",
-            va="center",
-            fontsize=12,
+            va="bottom",
+            fontsize=9,
             fontweight="bold",
         )
 
-    plt.tight_layout()
-    save_path = save_dir / "efficiency_analysis.png"
-    plt.savefig(save_path, dpi=300, bbox_inches="tight")
+
+def create_classification_metrics_comparison(df: pd.DataFrame, save_dir: Path) -> None:
+    metric_order = ["Accuracy", "F1 Score", "AUC Score"]
+    plot_df = (
+        df[["Display Model", *metric_order]]
+        .sort_values("Accuracy", ascending=False)
+        .melt(id_vars="Display Model", value_vars=metric_order, var_name="Metric", value_name="Score")
+    )
+
+    fig, ax = plt.subplots(figsize=(12, 7))
+    sns.barplot(
+        data=plot_df,
+        x="Display Model",
+        y="Score",
+        hue="Metric",
+        palette=METRIC_COLORS,
+        ax=ax,
+    )
+
+    annotate_bars(ax)
+    ax.set_title("Classification Metrics Across Baseline Models", fontweight="bold")
+    ax.set_xlabel("Model")
+    ax.set_ylabel("Score")
+    ax.set_ylim(0.88, 0.995)
+    ax.legend(title="Metric", loc="upper left")
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+    fig.tight_layout()
+    save_path = save_dir / "classification_metrics_comparison.png"
+    fig.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
-    print(f"Efficiency analysis saved to: {save_path}")
+    print(f"Saved {save_path}")
+
+
+def annotate_points(ax: plt.Axes, x_values: pd.Series, y_values: pd.Series, labels: pd.Series) -> None:
+    for x_value, y_value, label in zip(x_values, y_values, labels):
+        ax.annotate(
+            label,
+            (x_value, y_value),
+            xytext=(8, 8),
+            textcoords="offset points",
+            fontsize=10,
+            fontweight="bold",
+        )
+
+
+def create_performance_efficiency_tradeoff(df: pd.DataFrame, save_dir: Path) -> None:
+    plot_df = df.sort_values("Accuracy", ascending=False).copy()
+    colors = [MODEL_COLORS[name] for name in plot_df["Display Model"]]
+    params_m = plot_df["Parameters"] / 1_000_000
+
+    fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+    fig.suptitle("Performance-Efficiency Trade-offs", fontsize=17, fontweight="bold")
+
+    axes[0].scatter(params_m, plot_df["Accuracy"], s=160, c=colors, edgecolors="black", linewidths=0.8)
+    annotate_points(axes[0], params_m, plot_df["Accuracy"], plot_df["Display Model"])
+    axes[0].set_title("Model Size vs Accuracy")
+    axes[0].set_xlabel("Parameters (millions)")
+    axes[0].set_ylabel("Accuracy")
+    axes[0].set_ylim(0.88, 0.95)
+
+    axes[1].scatter(
+        plot_df["Inference Time (s)"],
+        plot_df["Accuracy"],
+        s=160,
+        c=colors,
+        edgecolors="black",
+        linewidths=0.8,
+    )
+    annotate_points(axes[1], plot_df["Inference Time (s)"], plot_df["Accuracy"], plot_df["Display Model"])
+    axes[1].set_title("Inference Time vs Accuracy")
+    axes[1].set_xlabel("Inference time (seconds)")
+    axes[1].set_ylabel("Accuracy")
+    axes[1].set_xscale("log")
+    axes[1].set_ylim(0.88, 0.95)
+
+    for ax in axes:
+        ax.spines["top"].set_visible(False)
+        ax.spines["right"].set_visible(False)
+        ax.grid(alpha=0.25)
+
+    fig.tight_layout()
+    save_path = save_dir / "performance_efficiency_tradeoff.png"
+    fig.savefig(save_path, dpi=300, bbox_inches="tight")
+    plt.close(fig)
+    print(f"Saved {save_path}")
 
 
 def create_comprehensive_table(df: pd.DataFrame, save_dir: Path) -> None:
-    fig, ax = plt.subplots(figsize=(16, 8))
+    fig, ax = plt.subplots(figsize=(15, 7))
     ax.axis("tight")
     ax.axis("off")
 
-    table_data = df.copy()
-    table_data["Training Time (h)"] = (table_data["Training Time (s)"] / 3600).round(2)
-    table_data["Training Time (h)"] = table_data["Training Time (h)"].where(table_data["Training Time (h)"].notna(), "NA")
-    table_data["Parameters (M)"] = (table_data["Parameters"] / 1_000_000).round(2)
-    table_data["Inference Time (s)"] = table_data["Inference Time (s)"].round(3)
+    table_df = df.copy()
+    table_df["Display Model"] = table_df["Display Model"]
+    table_df["Parameters (M)"] = (table_df["Parameters"] / 1_000_000).round(2)
+    table_df["Inference Time (s)"] = table_df["Inference Time (s)"].round(3)
+    table_df["Accuracy"] = table_df["Accuracy"].round(4)
+    table_df["F1 Score"] = table_df["F1 Score"].round(4)
+    table_df["AUC Score"] = table_df["AUC Score"].round(4)
 
     display_columns = [
-        "Model",
+        "Display Model",
         "Accuracy",
         "F1 Score",
         "AUC Score",
-        "Training Time (h)",
-        "Inference Time (s)",
         "Parameters (M)",
+        "Inference Time (s)",
     ]
-    table_data = table_data[display_columns]
-    for column in ["Accuracy", "F1 Score", "AUC Score"]:
-        table_data[column] = table_data[column].round(4)
+    table_df = table_df[display_columns].rename(columns={"Display Model": "Model"})
 
     table = ax.table(
-        cellText=table_data.values,
-        colLabels=table_data.columns,
+        cellText=table_df.values,
+        colLabels=table_df.columns,
         cellLoc="center",
         loc="center",
         bbox=[0, 0, 1, 1],
     )
     table.auto_set_font_size(False)
     table.set_fontsize(11)
-    table.scale(1.2, 2)
+    table.scale(1.15, 1.8)
 
-    for column_index in range(len(table_data.columns)):
-        table[(0, column_index)].set_facecolor("#4CAF50")
-        table[(0, column_index)].set_text_props(weight="bold", color="white")
+    header_color = "#264653"
+    highlight_color = "#d8f3dc"
 
-    ax.set_title("Normal-vs-Abnormal ECG Classification Comparison", fontsize=18, fontweight="bold", pad=30)
+    for col_idx in range(len(table_df.columns)):
+        table[(0, col_idx)].set_facecolor(header_color)
+        table[(0, col_idx)].set_text_props(weight="bold", color="white")
 
-    for row_index in range(len(table_data)):
-        if table_data.iloc[row_index, 1] == table_data["Accuracy"].max():
-            table[(row_index + 1, 1)].set_facecolor("#90EE90")
-        if table_data.iloc[row_index, 2] == table_data["F1 Score"].max():
-            table[(row_index + 1, 2)].set_facecolor("#90EE90")
-        if table_data.iloc[row_index, 3] == table_data["AUC Score"].max():
-            table[(row_index + 1, 3)].set_facecolor("#90EE90")
+    best_accuracy = table_df["Accuracy"].max()
+    best_f1 = table_df["F1 Score"].max()
+    best_auc = table_df["AUC Score"].max()
 
-    ax.text(
-        0.02,
-        0.02,
-        "Legend:\nBest performance",
-        transform=ax.transAxes,
-        fontsize=12,
-        bbox=dict(boxstyle="round,pad=0.5", facecolor="lightgray", alpha=0.8),
-    )
+    for row_idx in range(len(table_df)):
+        if table_df.iloc[row_idx]["Accuracy"] == best_accuracy:
+            table[(row_idx + 1, 1)].set_facecolor(highlight_color)
+        if table_df.iloc[row_idx]["F1 Score"] == best_f1:
+            table[(row_idx + 1, 2)].set_facecolor(highlight_color)
+        if table_df.iloc[row_idx]["AUC Score"] == best_auc:
+            table[(row_idx + 1, 3)].set_facecolor(highlight_color)
 
-    plt.tight_layout()
+    ax.set_title("Committed Benchmark Snapshot", fontsize=18, fontweight="bold", pad=24)
+
+    fig.tight_layout()
     save_path = save_dir / "comprehensive_table.png"
-    plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    fig.savefig(save_path, dpi=300, bbox_inches="tight")
     plt.close(fig)
-    print(f"Comprehensive comparison table saved to: {save_path}")
-
-
-def create_inference_speed_analysis(df: pd.DataFrame, save_dir: Path) -> None:
-    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
-    fig.suptitle("Model Inference Time Analysis", fontsize=16, fontweight="bold")
-
-    colors = ["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728"]
-
-    bars = ax1.bar(df["Model"], df["Inference Time (s)"], color=colors, alpha=0.8)
-    ax1.set_title("Inference Time Comparison")
-    ax1.set_ylabel("Inference Time (seconds)")
-    ax1.tick_params(axis="x", rotation=45)
-    for bar, value in zip(bars, df["Inference Time (s)"]):
-        ax1.text(
-            bar.get_x() + bar.get_width() / 2.0,
-            value + 0.1,
-            f"{value:.3f}s",
-            ha="center",
-            va="bottom",
-            fontweight="bold",
-        )
-
-    ax2.scatter(df["Inference Time (s)"], df["Accuracy"], c=colors, s=150, alpha=0.7, edgecolors="black")
-    ax2.set_xlabel("Inference Time (seconds)")
-    ax2.set_ylabel("Accuracy")
-    ax2.set_title("Accuracy vs Inference Time Trade-off")
-    ax2.grid(True, alpha=0.3)
-    for index, model in enumerate(df["Model"]):
-        ax2.annotate(
-            model,
-            (df["Inference Time (s)"].iloc[index], df["Accuracy"].iloc[index]),
-            xytext=(8, 8),
-            textcoords="offset points",
-            fontsize=10,
-            color="black",
-        )
-
-    plt.tight_layout()
-    save_path = save_dir / "inference_speed_analysis.png"
-    plt.savefig(save_path, dpi=300, bbox_inches="tight")
-    plt.close(fig)
-    print(f"Inference speed analysis saved to: {save_path}")
-
-
-def generate_summary_report(df: pd.DataFrame, save_dir: Path) -> None:
-    report: list[str] = []
-    report.append("NORMAL-VS-ABNORMAL ECG CLASSIFICATION SUMMARY")
-    report.append("=" * 50)
-    report.append("")
-
-    best_accuracy = df.loc[df["Accuracy"].idxmax()]
-    best_f1 = df.loc[df["F1 Score"].idxmax()]
-    best_auc = df.loc[df["AUC Score"].idxmax()]
-    training_df = df.dropna(subset=["Training Time (s)"])
-    fastest_inference = df.loc[df["Inference Time (s)"].idxmin()]
-    most_efficient = df.loc[(df["Accuracy"] / (df["Parameters"] / 1_000_000)).idxmax()]
-
-    report.append("PERFORMANCE LEADERS:")
-    report.append(f"- Best Accuracy: {best_accuracy['Model']} ({best_accuracy['Accuracy']:.4f})")
-    report.append(f"- Best F1 Score: {best_f1['Model']} ({best_f1['F1 Score']:.4f})")
-    report.append(f"- Best AUC Score: {best_auc['Model']} ({best_auc['AUC Score']:.4f})")
-    if not training_df.empty:
-        fastest_training = training_df.loc[training_df["Training Time (s)"].idxmin()]
-        report.append(
-            f"- Fastest Training (available runs): {fastest_training['Model']} "
-            f"({fastest_training['Training Time (s)'] / 3600:.2f} hours)"
-        )
-    else:
-        report.append("- Fastest Training: not reported in this result snapshot")
-    report.append(f"- Fastest Inference: {fastest_inference['Model']} ({fastest_inference['Inference Time (s)']:.3f}s)")
-    report.append(
-        f"- Most Parameter Efficient: {most_efficient['Model']} "
-        f"(Accuracy/M-params: {most_efficient['Accuracy'] / (most_efficient['Parameters'] / 1_000_000):.3f})"
-    )
-    report.append("")
-
-    report.append("DETAILED ANALYSIS:")
-    for _, row in df.iterrows():
-        report.append(f"\n{row['Model']}:")
-        report.append(f"  - Accuracy: {row['Accuracy']:.4f}")
-        report.append(f"  - F1 Score: {row['F1 Score']:.4f}")
-        report.append(f"  - AUC Score: {row['AUC Score']:.4f}")
-        if pd.notna(row["Training Time (s)"]):
-            report.append(f"  - Training Time: {row['Training Time (s)'] / 3600:.2f} hours")
-        else:
-            report.append("  - Training Time: not reported")
-        report.append(f"  - Inference Time: {row['Inference Time (s)']:.3f} seconds")
-        report.append(f"  - Parameters: {row['Parameters'] / 1_000_000:.2f}M")
-
-    report.append("")
-    report.append("RECOMMENDATIONS:")
-    report.append("Interpretation notes:")
-    report.append("- Highest reported accuracy/F1/AUC in the committed results: LSTM")
-    report.append("- Strongest size-latency trade-off in the committed results: CNN1D")
-    report.append("- Lower reported inference time in the committed results: CNN1D and Hybrid CNN-LSTM")
-    report.append("- These results describe supervised binary ECG classification, not clinical diagnosis.")
-
-    report_text = "\n".join(report)
-    save_path = save_dir / "evaluation_summary_report.txt"
-    save_path.write_text(report_text, encoding="utf-8")
-
-    print("\n" + "=" * 70)
-    print(report_text)
-    print("\n" + "=" * 70)
-    print(f"Summary report saved to: {save_path}")
+    print(f"Saved {save_path}")
 
 
 def main() -> None:
-    print("Normal-vs-Abnormal ECG Classification Visualization")
-    print("=" * 50)
+    print("Generating benchmark visualizations")
+    print(f"Reading results from: {RESULTS_PATH}")
 
     df = load_model_results()
-    if df is None:
-        return
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-    save_dir = ROOT_DIR / "results" / "visualization"
-    save_dir.mkdir(parents=True, exist_ok=True)
+    create_classification_metrics_comparison(df, OUTPUT_DIR)
+    create_performance_efficiency_tradeoff(df, OUTPUT_DIR)
+    create_comprehensive_table(df, OUTPUT_DIR)
 
-    print("\nGenerating visualizations...")
-    print(f"Results will be saved to: {save_dir}")
-
-    create_performance_comparison(df, save_dir)
-    create_radar_chart(df, save_dir)
-    create_efficiency_analysis(df, save_dir)
-    create_comprehensive_table(df, save_dir)
-    create_inference_speed_analysis(df, save_dir)
-    generate_summary_report(df, save_dir)
-
-    print("\nAll visualizations completed successfully.")
-    print(f"Files saved in: {save_dir}")
+    print(f"Visualization files written to: {OUTPUT_DIR}")
 
 
 if __name__ == "__main__":
