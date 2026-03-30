@@ -117,7 +117,11 @@ def create_classification_metrics_comparison(df: pd.DataFrame, save_dir: Path) -
 
     fig.tight_layout()
     save_path = save_dir / "classification_metrics_comparison.png"
-    fig.savefig(save_path, dpi=300, bbox_inches="tight")
+    # Do not use bbox_inches="tight" here. The y-axis is intentionally zoomed to
+    # highlight small metric differences, but the underlying bars still start at
+    # zero. A tight bbox would include the off-axis portion of the rectangles and
+    # produce a very tall PNG with large blank space.
+    fig.savefig(save_path, dpi=300)
     plt.close(fig)
     print(f"Saved {save_path}")
 
