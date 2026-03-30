@@ -72,20 +72,26 @@ def load_model_results() -> pd.DataFrame:
     return df
 
 
-def annotate_bars(ax: plt.Axes, offset: float = 0.0012) -> None:
-    for patch in ax.patches:
-        height = patch.get_height()
-        if np.isnan(height):
-            continue
-        ax.text(
-            patch.get_x() + patch.get_width() / 2.0,
-            height + offset,
-            f"{height:.4f}",
-            ha="center",
-            va="bottom",
-            fontsize=9,
-            fontweight="bold",
-        )
+def annotate_metric_points(ax: plt.Axes, plot_df: pd.DataFrame, metric_order: list[str]) -> None:
+    x_positions = {label: idx for idx, label in enumerate(plot_df["Display Model"].drop_duplicates())}
+    metric_offsets = {
+        "Accuracy": -0.16,
+        "F1 Score": 0.0,
+        "AUC Score": 0.16,
+    }
+
+    for metric in metric_order:
+        metric_rows = plot_df[plot_df["Metric"] == metric]
+        for _, row in metric_rows.iterrows():
+            ax.text(
+                x_positions[row["Display Model"]] + metric_offsets[metric],
+                row["Score"] + 0.0015,
+                f"{row['Score']:.4f}",
+                ha="center",
+                va="bottom",
+                fontsize=8,
+                fontweight="bold",
+            )
 
 
 def create_classification_metrics_comparison(df: pd.DataFrame, save_dir: Path) -> None:
@@ -96,17 +102,23 @@ def create_classification_metrics_comparison(df: pd.DataFrame, save_dir: Path) -
         .melt(id_vars="Display Model", value_vars=metric_order, var_name="Metric", value_name="Score")
     )
 
-    fig, ax = plt.subplots(figsize=(12, 7))
-    sns.barplot(
+    fig, ax = plt.subplots(figsize=(10, 5.8))
+    sns.pointplot(
         data=plot_df,
         x="Display Model",
         y="Score",
         hue="Metric",
+        hue_order=metric_order,
         palette=METRIC_COLORS,
+        dodge=0.35,
+        markers=["o", "s", "D"],
+        linestyles="",
+        scale=1.1,
+        errorbar=None,
         ax=ax,
     )
 
-    annotate_bars(ax)
+    annotate_metric_points(ax, plot_df, metric_order)
     ax.set_title("Classification Metrics Across Baseline Models", fontweight="bold")
     ax.set_xlabel("Model")
     ax.set_ylabel("Score")
@@ -117,10 +129,6 @@ def create_classification_metrics_comparison(df: pd.DataFrame, save_dir: Path) -
 
     fig.tight_layout()
     save_path = save_dir / "classification_metrics_comparison.png"
-    # Do not use bbox_inches="tight" here. The y-axis is intentionally zoomed to
-    # highlight small metric differences, but the underlying bars still start at
-    # zero. A tight bbox would include the off-axis portion of the rectangles and
-    # produce a very tall PNG with large blank space.
     fig.savefig(save_path, dpi=300)
     plt.close(fig)
     print(f"Saved {save_path}")
