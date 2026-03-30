@@ -1,23 +1,15 @@
-# PTB数据库
+# PTB-XL Raw Data
 
+This repository expects the raw PTB-XL dataset under:
 
-    PTB数据库下载指引:
-    
-    1. 访问PhysioNet网站: https://physionet.org/content/ptbdb/1.0.0/
-    2. 注册PhysioNet账户（如果没有）
-    3. 下载PTB数据库文件
-    4. 将下载的文件解压到 data/raw/ 目录
-    
-    数据库包含:
-    - 正常心电图记录
-    - 各种心脏疾病的异常心电图记录
-    - 12导联高分辨率数据
-    
-    注意: PTB数据库约为几百MB，请确保网络连接稳定
-    
+```text
+data/raw/ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.1/
+```
 
-## 数据格式
+The current codebase uses PTB-XL as the source dataset for a **supervised normal-vs-abnormal ECG classification** experiment.
 
-- .hea 文件: 头文件，包含记录信息
-- .dat 文件: 数据文件，包含心电图信号
-- .xyz 文件: 注释文件（可选）
+Notes:
+
+- This repository does not redistribute the raw dataset.
+- The labels used in this project are a coarse binary mapping derived from PTB-XL SCP codes.
+- The task in this repository is not unsupervised anomaly detection and not disease-specific diagnosis.

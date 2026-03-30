@@ -1,498 +1,830 @@
+import ast
 import os
+import pickle
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple
+
 import numpy as np
 import pandas as pd
+import torch
 import wfdb
 from scipy import signal
-from sklearn.preprocessing import StandardScaler
 from sklearn.model_selection import train_test_split
-import pickle
-import yaml
-import torch
-from typing import Tuple, List, Dict, Optional
+
+try:
+    from config_utils import load_config, resolve_config_path
+except ImportError:
+    from src.config_utils import load_config, resolve_config_path
+
 
 class PTBDataLoader:
-    """PTB数据库数据加载器"""
-    
+    """
+    PTB-XL data loader for supervised normal-vs-abnormal ECG classification.
+
+    Protocol note:
+    This loader now assigns train/validation/test splits at the source-record
+    level before any window segmentation. If PTB-XL patient identifiers are
+    present in the metadata, the split is performed at the patient level so
+    that every record from the same patient stays in exactly one split.
+    Window segmentation happens only after split assignment.
+    """
+
     def __init__(self, config_path: str = "config.yaml"):
-        with open(config_path, 'r', encoding='utf-8') as f:
-            self.config = yaml.safe_load(f)
-        
-        # 设置设备（CUDA或CPU）
-        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        print(f"使用设备: {self.device}")
+        resolved_config_path = resolve_config_path(config_path)
+        self.config = load_config(str(resolved_config_path))
+
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        print(f"Using device: {self.device}")
         if torch.cuda.is_available():
-            print(f"CUDA设备: {torch.cuda.get_device_name()}")
-            print(f"CUDA内存: {torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB")
-        
-        self.raw_data_path = self.config['data']['raw_data_path']
-        self.processed_data_path = self.config['data']['processed_data_path']
-        self.sampling_rate = self.config['data']['sampling_rate']
-        self.signal_length = self.config['data']['signal_length']
-        self.leads = self.config['data']['leads']
-        
-        # 创建处理后数据目录
+            print(f"CUDA device: {torch.cuda.get_device_name()}")
+            print(
+                "CUDA memory: "
+                f"{torch.cuda.get_device_properties(0).total_memory / 1024**3:.1f} GB"
+            )
+
+        self.raw_data_path = self.config["data"]["raw_data_path"]
+        self.processed_data_path = self.config["data"]["processed_data_path"]
+        self.sampling_rate = self.config["data"]["sampling_rate"]
+        self.signal_length = self.config["data"]["signal_length"]
+        self.leads = self.config["data"]["leads"]
+        self.random_seed = 42
+        self.last_split_level: Optional[str] = None
+        self.last_split_manifest_path: Optional[str] = None
+
         os.makedirs(self.processed_data_path, exist_ok=True)
-        
-        # PTB-XL数据集路径
-        self.ptbxl_path = os.path.join(self.raw_data_path, 'ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.1')
-        self.database_path = os.path.join(self.ptbxl_path, 'ptbxl_database.csv')
-    
+        self.results_path = self.config.get("paths", {}).get(
+            "results_path", self.processed_data_path
+        )
+
+        self.ptbxl_path = os.path.join(
+            self.raw_data_path,
+            "ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.1",
+        )
+        self.database_path = os.path.join(self.ptbxl_path, "ptbxl_database.csv")
+
     def load_ptb_record(self, record_path: str) -> Tuple[np.ndarray, Dict]:
-        """加载单个PTB记录
-        
-        Args:
-            record_path: 记录文件路径（不含扩展名）
-            
-        Returns:
-            signals: 心电图信号数据 (leads, samples)
-            metadata: 元数据信息
-        """
+        """Load one PTB-XL record from a WFDB path without file extension."""
         try:
-            # 读取wfdb记录
             record = wfdb.rdrecord(record_path)
-            
-            # 获取信号数据
-            signals = record.p_signal.T  # 转置为 (leads, samples)
-            
-            # 获取元数据
+            signals = record.p_signal.T
             metadata = {
-                'fs': record.fs,
-                'sig_len': record.sig_len,
-                'sig_name': record.sig_name,
-                'units': record.units,
-                'comments': record.comments
+                "fs": record.fs,
+                "sig_len": record.sig_len,
+                "sig_name": record.sig_name,
+                "units": record.units,
+                "comments": record.comments,
             }
-            
             return signals, metadata
-            
-        except Exception as e:
-            print(f"加载记录 {record_path} 时出错: {e}")
+        except Exception as exc:
+            print(f"Error loading record {record_path}: {exc}")
             return None, None
-    
+
     def preprocess_signal(self, signals: np.ndarray) -> np.ndarray:
-        """预处理心电图信号
-        
-        Args:
-            signals: 原始信号 (leads, samples)
-            
-        Returns:
-            processed_signals: 预处理后的信号
-        """
+        """Apply per-lead filtering and standardization."""
         processed_signals = []
-        
+
         for lead_signal in signals:
-            # 1. 去除基线漂移（高通滤波）
-            sos_hp = signal.butter(4, 0.5, btype='high', fs=self.sampling_rate, output='sos')
+            sos_hp = signal.butter(
+                4, 0.5, btype="high", fs=self.sampling_rate, output="sos"
+            )
             filtered_signal = signal.sosfilt(sos_hp, lead_signal)
-            
-            # 2. 去除高频噪声（低通滤波）- 适应100Hz采样率
+
             nyquist = self.sampling_rate / 2
-            cutoff_freq = min(40, nyquist - 1)  # 确保截止频率小于奈奎斯特频率
-            sos_lp = signal.butter(4, cutoff_freq, btype='low', fs=self.sampling_rate, output='sos')
+            cutoff_freq = min(40, nyquist - 1)
+            sos_lp = signal.butter(
+                4, cutoff_freq, btype="low", fs=self.sampling_rate, output="sos"
+            )
             filtered_signal = signal.sosfilt(sos_lp, filtered_signal)
-            
-            # 3. 去除工频干扰（陷波滤波）- 仅在采样率足够高时应用
-            if self.sampling_rate > 120:  # 确保有足够的频率范围
-                sos_notch = signal.butter(4, [49, 51], btype='bandstop', fs=self.sampling_rate, output='sos')
+
+            if self.sampling_rate > 120:
+                sos_notch = signal.butter(
+                    4, [49, 51], btype="bandstop", fs=self.sampling_rate, output="sos"
+                )
                 filtered_signal = signal.sosfilt(sos_notch, filtered_signal)
-            
-            # 4. 标准化
+
             signal_std = np.std(filtered_signal)
-            if signal_std > 1e-8:  # 避免除零
+            if signal_std > 1e-8:
                 filtered_signal = (filtered_signal - np.mean(filtered_signal)) / signal_std
             else:
                 filtered_signal = filtered_signal - np.mean(filtered_signal)
-            
+
             processed_signals.append(filtered_signal)
-        
+
         return np.array(processed_signals)
-    
+
     def extract_features(self, signals: np.ndarray) -> np.ndarray:
-        """提取心电图特征
-        
-        Args:
-            signals: 预处理后的信号 (leads, samples)
-            
-        Returns:
-            features: 提取的特征
-        """
+        """Retained for compatibility with older exploratory code."""
         features = []
-        
+
         for lead_signal in signals:
-            lead_features = []
-            
-            # 时域特征
-            lead_features.extend([
-                np.mean(lead_signal),           # 均值
-                np.std(lead_signal),            # 标准差
-                np.var(lead_signal),            # 方差
-                np.max(lead_signal),            # 最大值
-                np.min(lead_signal),            # 最小值
-                np.ptp(lead_signal),            # 峰峰值
-                np.mean(np.abs(lead_signal)),   # 平均绝对值
-                np.sqrt(np.mean(lead_signal**2)) # RMS
-            ])
-            
-            # 频域特征
+            lead_features = [
+                np.mean(lead_signal),
+                np.std(lead_signal),
+                np.var(lead_signal),
+                np.max(lead_signal),
+                np.min(lead_signal),
+                np.ptp(lead_signal),
+                np.mean(np.abs(lead_signal)),
+                np.sqrt(np.mean(lead_signal**2)),
+            ]
+
             freqs, psd = signal.welch(lead_signal, fs=self.sampling_rate, nperseg=1024)
-            
-            # 不同频带的功率
-            freq_bands = self.config['graph']['frequency_bands']
-            for i in range(len(freq_bands)-1):
-                band_mask = (freqs >= freq_bands[i]) & (freqs < freq_bands[i+1])
-                band_power = np.sum(psd[band_mask])
-                lead_features.append(band_power)
-            
-            # 主频率
+            freq_bands = self.config["graph"]["frequency_bands"]
+            for index in range(len(freq_bands) - 1):
+                band_mask = (freqs >= freq_bands[index]) & (freqs < freq_bands[index + 1])
+                lead_features.append(np.sum(psd[band_mask]))
+
             dominant_freq = freqs[np.argmax(psd)]
             lead_features.append(dominant_freq)
-            
-            # 频谱熵
+
             psd_norm = psd / np.sum(psd)
             spectral_entropy = -np.sum(psd_norm * np.log2(psd_norm + 1e-12))
             lead_features.append(spectral_entropy)
-            
             features.append(lead_features)
-        
+
         return np.array(features)
-    
-    def segment_signal(self, signals: np.ndarray, segment_length: int = None) -> List[np.ndarray]:
-        """将长信号分割为固定长度的片段
-        
-        Args:
-            signals: 信号数据 (leads, samples)
-            segment_length: 片段长度，默认使用配置中的signal_length
-            
-        Returns:
-            segments: 分割后的信号片段列表
+
+    def segment_signal(
+        self, signals: np.ndarray, segment_length: Optional[int] = None
+    ) -> List[np.ndarray]:
+        """
+        Segment a recording into fixed-length overlapping windows.
+
+        This method is intentionally split-agnostic. The important protocol
+        constraint is enforced by calling it only after each source record has
+        already been assigned to train/validation/test.
         """
         if segment_length is None:
             segment_length = self.signal_length
-        
+
         _, total_samples = signals.shape
         segments = []
-        
-        # 滑动窗口分割
-        step_size = segment_length // 2  # 50%重叠
-        
+        step_size = segment_length // 2  # 50% overlap
+
         for start in range(0, total_samples - segment_length + 1, step_size):
             end = start + segment_length
-            segment = signals[:, start:end]
-            segments.append(segment)
-        
+            segments.append(signals[:, start:end])
+
         return segments
-    
+
     def load_ptbxl_database(self) -> pd.DataFrame:
-        """加载PTB-XL数据库元数据
-        
-        Returns:
-            df: 包含所有记录信息的DataFrame
-        """
+        """Load PTB-XL metadata indexed by ecg_id."""
         if not os.path.exists(self.database_path):
-            raise FileNotFoundError(f"PTB-XL数据库文件不存在: {self.database_path}")
-        
-        # 加载数据库
-        df = pd.read_csv(self.database_path, index_col='ecg_id')
-        return df
-    
+            raise FileNotFoundError(f"PTB-XL metadata not found: {self.database_path}")
+        return pd.read_csv(self.database_path, index_col="ecg_id")
+
     def get_record_path(self, ecg_id: int, sampling_rate: int = 100) -> str:
-        """获取记录文件路径
-        
-        Args:
-            ecg_id: ECG记录ID
-            sampling_rate: 采样率 (100 or 500)
-            
-        Returns:
-            record_path: 记录文件路径（不含扩展名）
-        """
-        # 构建文件路径
-        folder = f"{ecg_id:05d}"[:-3] + "000"  # 例如：00001 -> 00000
-        filename = f"{ecg_id:05d}_lr"  # 例如：00001_lr
-        
-        record_path = os.path.join(
-            self.ptbxl_path, 
-            f"records{sampling_rate}", 
-            folder, 
-            filename
-        )
-        
-        return record_path
-    
+        """Fallback path builder when filename columns are unavailable."""
+        folder = f"{ecg_id:05d}"[:-3] + "000"
+        filename = f"{ecg_id:05d}_lr"
+        return os.path.join(self.ptbxl_path, f"records{sampling_rate}", folder, filename)
+
     def parse_scp_codes(self, scp_codes_str: str) -> dict:
-        """解析scp_codes字符串
-        
-        Args:
-            scp_codes_str: scp_codes字符串，如"{'NORM': 100.0, 'SR': 0.0}"
-            
-        Returns:
-            dict: 解析后的字典
-        """
+        """Parse the PTB-XL SCP-code dictionary stored as text."""
         try:
-            import ast
             return ast.literal_eval(scp_codes_str)
-        except:
+        except Exception:
             return {}
-    
+
     def is_normal_record(self, scp_codes_str: str) -> bool:
-        """判断记录是否为正常
-        
-        Args:
-            scp_codes_str: scp_codes字符串
-            
-        Returns:
-            bool: True表示正常，False表示异常
+        """
+        Define the binary label at the source-record level.
+
+        A record is normal only if:
+        - NORM is present with confidence >= 50
+        - no other non-SR code has confidence >= 50
         """
         scp_dict = self.parse_scp_codes(scp_codes_str)
-        
-        # 如果包含NORM且置信度较高，认为是正常
-        if 'NORM' in scp_dict and scp_dict['NORM'] >= 50.0:
-            # 检查是否有其他高置信度的异常标签
+
+        if "NORM" in scp_dict and scp_dict["NORM"] >= 50.0:
             for code, confidence in scp_dict.items():
-                if code != 'NORM' and code != 'SR' and confidence >= 50.0:
-                    return False  # 有其他高置信度异常，认为是异常
+                if code != "NORM" and code != "SR" and confidence >= 50.0:
+                    return False
             return True
-        
-        return False  # 不包含NORM或置信度低，认为是异常
-    
-    def load_and_process_dataset(self, max_samples: int = None) -> Tuple[List[np.ndarray], List[int]]:
-        """加载并处理整个数据集
-        
-        Args:
-            max_samples: 最大样本数量，用于测试
-            
-        Returns:
-            processed_data: 处理后的数据列表
-            labels: 标签列表 (0: 正常, 1: 异常)
+
+        return False
+
+    def _resolve_record_path(self, row: pd.Series) -> str:
+        """Use PTB-XL filename metadata when available; fall back to ecg_id logic."""
+        filename_lr = row.get("filename_lr")
+        if isinstance(filename_lr, str) and filename_lr:
+            return os.path.join(self.ptbxl_path, filename_lr)
+        return self.get_record_path(int(row["ecg_id"]), sampling_rate=self.sampling_rate)
+
+    def _build_record_metadata(self, max_samples: Optional[int] = None) -> pd.DataFrame:
         """
-        processed_data = []
-        labels = []
-        
-        # 加载PTB-XL数据库
-        print("加载PTB-XL数据库...")
+        Build one row per source record before any segmentation.
+
+        The resulting table is the authoritative source for:
+        - source-record labels
+        - split assignment
+        - patient grouping when available
+        """
+        print("Loading PTB-XL metadata...")
         df = self.load_ptbxl_database()
-        
-        # 定义正常和异常的标准
-        print("分析scp_codes标签...")
-        normal_records = []
-        abnormal_records = []
-        
-        for idx, row in df.iterrows():
-            if pd.isna(row['scp_codes']):
+
+        records = []
+        print("Deriving record-level labels from SCP codes...")
+        for ecg_id, row in df.iterrows():
+            if pd.isna(row.get("scp_codes")):
                 continue
-            
-            if self.is_normal_record(row['scp_codes']):
-                normal_records.append(idx)
-            else:
-                abnormal_records.append(idx)
-        
-        print(f"找到 {len(normal_records)} 个正常记录")
-        print(f"找到 {len(abnormal_records)} 个异常记录")
-        
-        # 确保有足够的异常样本
-        if len(abnormal_records) < len(normal_records) * 0.1:  # 异常样本少于10%
-            print(f"异常样本过少({len(abnormal_records)})，从正常样本中随机选择一些作为异常")
-            np.random.seed(42)
-            additional_abnormal = min(len(normal_records) // 4, 1000)  # 最多选择1000个
-            selected_indices = np.random.choice(normal_records, additional_abnormal, replace=False)
-            
-            # 将选中的从正常中移除，加入异常
-            for idx in selected_indices:
-                normal_records.remove(idx)
-                abnormal_records.append(idx)
-            
-            print(f"调整后: {len(normal_records)} 个正常记录, {len(abnormal_records)} 个异常记录")
-        
-        # 限制样本数量（用于测试）
-        if max_samples:
-            max_normal = min(max_samples // 2, len(normal_records))
-            max_abnormal = min(max_samples - max_normal, len(abnormal_records))
-            normal_records = normal_records[:max_normal]
-            abnormal_records = abnormal_records[:max_abnormal]
-        
-        # 处理正常记录
-        print(f"处理 {len(normal_records)} 个正常记录...")
-        for i, ecg_id in enumerate(normal_records):
-            if i % 100 == 0:
-                print(f"  进度: {i}/{len(normal_records)}")
-            
-            record_path = self.get_record_path(ecg_id)
-            signals, metadata = self.load_ptb_record(record_path)
-            
-            if signals is not None:
-                try:
-                    # 预处理
-                    processed_signals = self.preprocess_signal(signals)
-                    
-                    # 分割信号
-                    segments = self.segment_signal(processed_signals)
-                    
-                    for segment in segments:
-                        processed_data.append(segment)
-                        labels.append(0)  # 正常
-                except Exception as e:
-                    print(f"处理记录 {ecg_id} 时出错: {e}")
-                    continue
-        
-        # 处理异常记录
-        print(f"处理 {len(abnormal_records)} 个异常记录...")
-        for i, ecg_id in enumerate(abnormal_records):
-            if i % 100 == 0:
-                print(f"  进度: {i}/{len(abnormal_records)}")
-            
-            record_path = self.get_record_path(ecg_id)
-            signals, metadata = self.load_ptb_record(record_path)
-            
-            if signals is not None:
-                try:
-                    # 预处理
-                    processed_signals = self.preprocess_signal(signals)
-                    
-                    # 分割信号
-                    segments = self.segment_signal(processed_signals)
-                    
-                    for segment in segments:
-                        processed_data.append(segment)
-                        labels.append(1)  # 异常
-                except Exception as e:
-                    print(f"处理记录 {ecg_id} 时出错: {e}")
-                    continue
-        
-        print(f"数据处理完成！总共 {len(processed_data)} 个样本")
-        print(f"正常样本: {labels.count(0)}, 异常样本: {labels.count(1)}")
-        
-        return processed_data, labels
-    
-    def save_processed_data(self, data: List[np.ndarray], labels: List[int]):
-        """保存处理后的数据"""
-        if len(data) == 0:
-            raise ValueError("没有数据可保存")
-        
-        # 转换为numpy数组
-        data_array = np.array(data)
-        labels_array = np.array(labels)
-        
-        print(f"数据形状: {data_array.shape}")
-        print(f"标签分布: 正常={np.sum(labels_array==0)}, 异常={np.sum(labels_array==1)}")
-        
-        # 划分训练、验证、测试集
-        train_ratio = self.config['data']['train_ratio']
-        val_ratio = self.config['data']['val_ratio']
-        
-        try:
-            # 首先划分训练和临时集
-            X_train, X_temp, y_train, y_temp = train_test_split(
-                data_array, labels_array, test_size=(1-train_ratio), random_state=42, stratify=labels_array
+
+            label = 0 if self.is_normal_record(row["scp_codes"]) else 1
+            records.append(
+                {
+                    "ecg_id": int(ecg_id),
+                    "label": label,
+                    "patient_id": row.get("patient_id", np.nan),
+                    "filename_lr": row.get("filename_lr", None),
+                    "filename_hr": row.get("filename_hr", None),
+                    "scp_codes": row.get("scp_codes", None),
+                }
             )
-            
-            # 再划分验证和测试集
-            val_size = val_ratio / (val_ratio + self.config['data']['test_ratio'])
-            X_val, X_test, y_val, y_test = train_test_split(
-                X_temp, y_temp, test_size=(1-val_size), random_state=42, stratify=y_temp
+
+        records_df = pd.DataFrame(records).sort_values("ecg_id").reset_index(drop=True)
+        normal_count = int((records_df["label"] == 0).sum())
+        abnormal_count = int((records_df["label"] == 1).sum())
+        print(f"Found {normal_count} normal records")
+        print(f"Found {abnormal_count} abnormal records")
+
+        # Do not alter source-record labels to "balance" the dataset.
+        # Label-preserving imbalance handling belongs in the training stage,
+        # e.g. class-weighted loss or a weighted sampler.
+        if normal_count > 0 and abnormal_count > 0:
+            imbalance_ratio = max(normal_count, abnormal_count) / min(
+                normal_count, abnormal_count
             )
-        except ValueError as e:
-            print(f"分层采样失败，使用随机采样: {e}")
-            # 首先划分训练和临时集
-            X_train, X_temp, y_train, y_temp = train_test_split(
-                data_array, labels_array, test_size=(1-train_ratio), random_state=42
-            )
-            
-            # 再划分验证和测试集
-            val_size = val_ratio / (val_ratio + self.config['data']['test_ratio'])
-            X_val, X_test, y_val, y_test = train_test_split(
-                X_temp, y_temp, test_size=(1-val_size), random_state=42
-            )
-        
-        # 保存数据为numpy格式（更适合CUDA加载）
-        datasets = {
-            'train': (X_train, y_train),
-            'val': (X_val, y_val),
-            'test': (X_test, y_test)
-        }
-        
-        for split, (X, y) in datasets.items():
-            # 保存为numpy格式
-            np.save(os.path.join(self.processed_data_path, f'X_{split}.npy'), X)
-            np.save(os.path.join(self.processed_data_path, f'y_{split}.npy'), y)
-            print(f"保存 {split} 数据: {X.shape}")
-        
-        # 显示CUDA信息
-        if torch.cuda.is_available():
-            print(f"CUDA可用，使用GPU: {torch.cuda.get_device_name()}")
+            print(f"Record-level class imbalance ratio: {imbalance_ratio:.2f}:1")
         else:
-            print("CUDA不可用，使用CPU")
-    
-    def load_processed_data(self, split: str) -> Tuple[np.ndarray, np.ndarray]:
-        """加载处理后的数据
-        
-        Args:
-            split: 数据集划分 ('train', 'val', 'test')
-            
-        Returns:
-            data: 数据数组
-            labels: 标签数组
+            print("Warning: only one class is present in the current record metadata.")
+
+        if max_samples:
+            normal_records = records_df[records_df["label"] == 0].head(
+                min(max_samples // 2, (records_df["label"] == 0).sum())
+            )
+            abnormal_records = records_df[records_df["label"] == 1].head(
+                min(max_samples - len(normal_records), (records_df["label"] == 1).sum())
+            )
+            records_df = (
+                pd.concat([normal_records, abnormal_records])
+                .sort_values("ecg_id")
+                .reset_index(drop=True)
+            )
+
+        return records_df
+
+    def _maybe_stratify(self, labels: pd.Series) -> Optional[pd.Series]:
+        """Use stratification only when both classes have enough samples."""
+        label_counts = labels.value_counts()
+        if len(label_counts) < 2:
+            return None
+        if (label_counts < 2).any():
+            return None
+        return labels
+
+    def _split_ids(
+        self,
+        ids: pd.Series,
+        labels: pd.Series,
+        train_fraction: float,
+    ) -> Tuple[List, List]:
+        """Split IDs with stratification when feasible, else plain random split."""
+        test_fraction = 1.0 - train_fraction
+        stratify = self._maybe_stratify(labels)
+        try:
+            train_ids, test_ids = train_test_split(
+                ids,
+                test_size=test_fraction,
+                random_state=self.random_seed,
+                stratify=stratify,
+            )
+        except ValueError as exc:
+            print(f"Stratified split failed, falling back to random split: {exc}")
+            train_ids, test_ids = train_test_split(
+                ids,
+                test_size=test_fraction,
+                random_state=self.random_seed,
+            )
+        return list(train_ids), list(test_ids)
+
+    def _split_record_metadata(self, records_df: pd.DataFrame) -> Dict[str, pd.DataFrame]:
         """
-        X_path = os.path.join(self.processed_data_path, f'X_{split}.npy')
-        y_path = os.path.join(self.processed_data_path, f'y_{split}.npy')
-        
-        if not os.path.exists(X_path) or not os.path.exists(y_path):
-            # 尝试加载旧格式
-            old_path = os.path.join(self.processed_data_path, f'{split}_data.pkl')
+        Split source records before any windowing.
+
+        Preferred behavior:
+        - patient-level split if patient_id is available
+        - otherwise record-level split
+
+        In both cases, every source record belongs to exactly one split.
+        """
+        train_ratio = self.config["data"]["train_ratio"]
+        val_ratio = self.config["data"]["val_ratio"]
+        test_ratio = self.config["data"]["test_ratio"]
+        temp_train_fraction = val_ratio / (val_ratio + test_ratio)
+
+        use_patient_level = (
+            "patient_id" in records_df.columns
+            and records_df["patient_id"].notna().all()
+            and records_df["patient_id"].nunique() > 1
+        )
+
+        if use_patient_level:
+            patient_df = (
+                records_df.groupby("patient_id", as_index=False)
+                .agg(patient_label=("label", "max"))
+                .sort_values("patient_id")
+                .reset_index(drop=True)
+            )
+
+            train_patients, temp_patients = self._split_ids(
+                patient_df["patient_id"], patient_df["patient_label"], train_ratio
+            )
+
+            temp_patient_df = patient_df[patient_df["patient_id"].isin(temp_patients)]
+            val_patients, test_patients = self._split_ids(
+                temp_patient_df["patient_id"],
+                temp_patient_df["patient_label"],
+                temp_train_fraction,
+            )
+
+            split_tables = {
+                "train": records_df[records_df["patient_id"].isin(train_patients)].copy(),
+                "val": records_df[records_df["patient_id"].isin(val_patients)].copy(),
+                "test": records_df[records_df["patient_id"].isin(test_patients)].copy(),
+            }
+            self.last_split_level = "patient"
+        else:
+            try:
+                train_df, temp_df = train_test_split(
+                    records_df,
+                    test_size=(1.0 - train_ratio),
+                    random_state=self.random_seed,
+                    stratify=self._maybe_stratify(records_df["label"]),
+                )
+            except ValueError as exc:
+                print(f"Stratified split failed, falling back to random split: {exc}")
+                train_df, temp_df = train_test_split(
+                    records_df,
+                    test_size=(1.0 - train_ratio),
+                    random_state=self.random_seed,
+                )
+
+            temp_stratify = self._maybe_stratify(temp_df["label"])
+            try:
+                val_df, test_df = train_test_split(
+                    temp_df,
+                    test_size=(1.0 - temp_train_fraction),
+                    random_state=self.random_seed,
+                    stratify=temp_stratify,
+                )
+            except ValueError as exc:
+                print(f"Stratified split failed, falling back to random split: {exc}")
+                val_df, test_df = train_test_split(
+                    temp_df,
+                    test_size=(1.0 - temp_train_fraction),
+                    random_state=self.random_seed,
+                )
+
+            split_tables = {
+                "train": train_df.copy(),
+                "val": val_df.copy(),
+                "test": test_df.copy(),
+            }
+            self.last_split_level = "record"
+
+        for split_name, split_df in split_tables.items():
+            split_tables[split_name] = (
+                split_df.sort_values("ecg_id").reset_index(drop=True)
+            )
+
+        print(f"Split level: {self.last_split_level}")
+        for split_name, split_df in split_tables.items():
+            normal_count = int((split_df["label"] == 0).sum())
+            abnormal_count = int((split_df["label"] == 1).sum())
+            print(
+                f"{split_name}: {len(split_df)} records "
+                f"(normal={normal_count}, abnormal={abnormal_count})"
+            )
+
+        return split_tables
+
+    def _process_split_records(
+        self, split_df: pd.DataFrame, split_name: str
+    ) -> Tuple[List[np.ndarray], List[int], pd.DataFrame, pd.DataFrame]:
+        """
+        Preprocess and segment only the records assigned to one split.
+
+        Because split assignment already happened at the record or patient level,
+        every window produced here is guaranteed to stay inside a single split.
+
+        Returns:
+            processed_data:
+                Window tensors in the exact order later written to X_<split>.npy.
+            labels:
+                Window labels aligned to processed_data.
+            record_manifest:
+                One row per source record with processing status and segment counts.
+            window_manifest:
+                One row per saved window. This is the provenance table used later
+                by evaluation to map prediction rows back to source records.
+        """
+        processed_data: List[np.ndarray] = []
+        labels: List[int] = []
+        manifest_rows = []
+        window_rows = []
+        step_size = self.signal_length // 2
+        split_sample_index = 0
+
+        print(f"Processing {len(split_df)} source records for split '{split_name}'...")
+        for index, row in split_df.iterrows():
+            if index % 100 == 0:
+                print(f"  Progress: {index}/{len(split_df)}")
+
+            record_path = self._resolve_record_path(row)
+            signals, _ = self.load_ptb_record(record_path)
+            if signals is None:
+                manifest_rows.append(
+                    {
+                        "ecg_id": int(row["ecg_id"]),
+                        "patient_id": row.get("patient_id", np.nan),
+                        "label": int(row["label"]),
+                        "filename_lr": row.get("filename_lr", None),
+                        "filename_hr": row.get("filename_hr", None),
+                        "scp_codes": row.get("scp_codes", None),
+                        "record_path": record_path,
+                        "num_segments": 0,
+                        "processing_status": "load_failed",
+                        "error": "wfdb_load_failed",
+                    }
+                )
+                continue
+
+            try:
+                processed_signals = self.preprocess_signal(signals)
+                segments = self.segment_signal(processed_signals)
+                label = int(row["label"])
+
+                for window_index_within_record, segment in enumerate(segments):
+                    processed_data.append(segment)
+                    labels.append(label)
+                    segment_start_sample = window_index_within_record * step_size
+                    window_rows.append(
+                        {
+                            "window_id": f"{split_name}_{split_sample_index:07d}",
+                            "sample_index_in_split": split_sample_index,
+                            "window_index_within_record": window_index_within_record,
+                            "source_record_id": int(row["ecg_id"]),
+                            "patient_id": row.get("patient_id", np.nan),
+                            "split": split_name,
+                            "label": label,
+                            "filename_lr": row.get("filename_lr", None),
+                            "filename_hr": row.get("filename_hr", None),
+                            "scp_codes": row.get("scp_codes", None),
+                            "record_path": record_path,
+                            "segment_start_sample": segment_start_sample,
+                            "segment_end_sample": segment_start_sample
+                            + self.signal_length,
+                            "manifest_source": "generated_during_preprocessing",
+                        }
+                    )
+                    split_sample_index += 1
+
+                manifest_rows.append(
+                    {
+                        "ecg_id": int(row["ecg_id"]),
+                        "patient_id": row.get("patient_id", np.nan),
+                        "label": label,
+                        "filename_lr": row.get("filename_lr", None),
+                        "filename_hr": row.get("filename_hr", None),
+                        "scp_codes": row.get("scp_codes", None),
+                        "num_segments": len(segments),
+                        "record_path": record_path,
+                        "processing_status": "processed",
+                        "error": "",
+                    }
+                )
+            except Exception as exc:
+                print(f"Error processing record {row['ecg_id']}: {exc}")
+                manifest_rows.append(
+                    {
+                        "ecg_id": int(row["ecg_id"]),
+                        "patient_id": row.get("patient_id", np.nan),
+                        "label": int(row["label"]),
+                        "filename_lr": row.get("filename_lr", None),
+                        "filename_hr": row.get("filename_hr", None),
+                        "scp_codes": row.get("scp_codes", None),
+                        "record_path": record_path,
+                        "num_segments": 0,
+                        "processing_status": "processing_failed",
+                        "error": str(exc),
+                    }
+                )
+                continue
+
+        print(
+            f"Finished split '{split_name}': "
+            f"{len(processed_data)} windows from {len(manifest_rows)} records"
+        )
+        return (
+            processed_data,
+            labels,
+            pd.DataFrame(manifest_rows),
+            pd.DataFrame(window_rows),
+        )
+
+    def _save_split_manifest(
+        self, split_manifests: Dict[str, pd.DataFrame]
+    ) -> Optional[str]:
+        """
+        Save a combined record-level split manifest for the current preprocessing run.
+
+        The manifest is written twice:
+        - a timestamped per-run CSV
+        - a stable `split_manifest_latest.csv` path for documentation and inspection
+        """
+        manifest_frames = []
+        for split_name, manifest_df in split_manifests.items():
+            if manifest_df is None or manifest_df.empty:
+                continue
+
+            manifest_copy = manifest_df.copy()
+            manifest_copy["split"] = split_name
+            manifest_copy["split_level"] = self.last_split_level
+            manifest_copy["sampling_rate"] = self.sampling_rate
+            manifest_copy["segment_length"] = self.signal_length
+            manifest_copy["window_step_size"] = self.signal_length // 2
+            manifest_frames.append(manifest_copy)
+
+        if not manifest_frames:
+            return None
+
+        combined_manifest = (
+            pd.concat(manifest_frames, ignore_index=True)
+            .sort_values(["split", "ecg_id"])
+            .reset_index(drop=True)
+        )
+
+        manifest_dir = os.path.join(self.results_path, "preprocessing")
+        os.makedirs(manifest_dir, exist_ok=True)
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        run_manifest_path = os.path.join(manifest_dir, f"split_manifest_{timestamp}.csv")
+        latest_manifest_path = os.path.join(manifest_dir, "split_manifest_latest.csv")
+
+        combined_manifest.to_csv(run_manifest_path, index=False)
+        combined_manifest.to_csv(latest_manifest_path, index=False)
+
+        self.last_split_manifest_path = latest_manifest_path
+        print(f"Saved run split manifest: {run_manifest_path}")
+        print(f"Saved latest split manifest: {latest_manifest_path}")
+        return latest_manifest_path
+
+    def load_and_process_dataset(
+        self, max_samples: Optional[int] = None
+    ) -> Tuple[
+        Dict[str, Tuple[List[np.ndarray], List[int]]],
+        Dict[str, pd.DataFrame],
+        Dict[str, pd.DataFrame],
+    ]:
+        """
+        End-to-end preprocessing with split-before-segmentation protocol.
+
+        Returns:
+            split_datasets:
+                {'train': (windows, labels), 'val': (...), 'test': (...)}
+            split_manifests:
+                record-level manifest for each split
+            split_window_manifests:
+                window-level manifest for each split, aligned to the saved arrays
+        """
+        records_df = self._build_record_metadata(max_samples=max_samples)
+        split_tables = self._split_record_metadata(records_df)
+
+        split_datasets: Dict[str, Tuple[List[np.ndarray], List[int]]] = {}
+        split_manifests: Dict[str, pd.DataFrame] = {}
+        split_window_manifests: Dict[str, pd.DataFrame] = {}
+
+        for split_name, split_df in split_tables.items():
+            (
+                split_data,
+                split_labels,
+                manifest_df,
+                window_manifest_df,
+            ) = self._process_split_records(split_df, split_name)
+            split_datasets[split_name] = (split_data, split_labels)
+            split_manifests[split_name] = manifest_df
+            split_window_manifests[split_name] = window_manifest_df
+
+        return split_datasets, split_manifests, split_window_manifests
+
+    def save_processed_data(
+        self,
+        split_datasets: Dict[str, Tuple[List[np.ndarray], List[int]]],
+        split_manifests: Optional[Dict[str, pd.DataFrame]] = None,
+        split_window_manifests: Optional[Dict[str, pd.DataFrame]] = None,
+    ):
+        """Save already-split arrays and optional record/window manifests."""
+        for split_name, (data, labels) in split_datasets.items():
+            if len(data) == 0:
+                raise ValueError(f"No data available for split '{split_name}'")
+
+            data_array = np.array(data)
+            labels_array = np.array(labels)
+
+            print(
+                f"{split_name} data shape: {data_array.shape} "
+                f"(normal={np.sum(labels_array == 0)}, abnormal={np.sum(labels_array == 1)})"
+            )
+
+            np.save(os.path.join(self.processed_data_path, f"X_{split_name}.npy"), data_array)
+            np.save(os.path.join(self.processed_data_path, f"y_{split_name}.npy"), labels_array)
+
+            if split_manifests and split_name in split_manifests:
+                manifest_path = os.path.join(
+                    self.processed_data_path, f"{split_name}_manifest.csv"
+                )
+                split_manifests[split_name].to_csv(manifest_path, index=False)
+                print(f"Saved {split_name} manifest: {manifest_path}")
+
+            if split_window_manifests and split_name in split_window_manifests:
+                window_manifest_path = os.path.join(
+                    self.processed_data_path, f"{split_name}_window_manifest.csv"
+                )
+                split_window_manifests[split_name].to_csv(
+                    window_manifest_path, index=False
+                )
+                print(
+                    f"Saved {split_name} window manifest: {window_manifest_path}"
+                )
+
+        self._save_split_manifest(split_manifests or {})
+
+        protocol_path = os.path.join(self.processed_data_path, "split_protocol.txt")
+        with open(protocol_path, "w", encoding="utf-8") as handle:
+            handle.write(
+                "Split-before-segmentation protocol\n"
+                f"Split level: {self.last_split_level}\n"
+                "All windows from a source record stay in exactly one split.\n"
+            )
+            if self.last_split_manifest_path:
+                handle.write(f"Combined split manifest: {self.last_split_manifest_path}\n")
+        print(f"Saved protocol note: {protocol_path}")
+
+    def _reconstruct_window_manifest(
+        self, split: str, record_manifest: pd.DataFrame
+    ) -> pd.DataFrame:
+        """
+        Reconstruct window-level provenance from a record-level manifest.
+
+        This supports backward compatibility for older processed splits that
+        saved `num_segments` per record but did not persist one row per window.
+        """
+        processed_records = record_manifest.copy()
+        if "processing_status" in processed_records.columns:
+            processed_records = processed_records[
+                processed_records["processing_status"] == "processed"
+            ]
+        elif "num_segments" in processed_records.columns:
+            processed_records = processed_records[
+                processed_records["num_segments"].fillna(0).astype(int) > 0
+            ]
+
+        window_rows = []
+        sample_index = 0
+        step_size = self.signal_length // 2
+
+        for _, row in processed_records.iterrows():
+            num_segments = int(row.get("num_segments", 0) or 0)
+            for window_index_within_record in range(num_segments):
+                segment_start_sample = window_index_within_record * step_size
+                window_rows.append(
+                    {
+                        "window_id": f"{split}_{sample_index:07d}",
+                        "sample_index_in_split": sample_index,
+                        "window_index_within_record": window_index_within_record,
+                        "source_record_id": int(row["ecg_id"]),
+                        "patient_id": row.get("patient_id", np.nan),
+                        "split": split,
+                        "label": int(row["label"]),
+                        "filename_lr": row.get("filename_lr", None),
+                        "filename_hr": row.get("filename_hr", None),
+                        "scp_codes": row.get("scp_codes", None),
+                        "record_path": row.get("record_path", None),
+                        "segment_start_sample": segment_start_sample,
+                        "segment_end_sample": segment_start_sample
+                        + self.signal_length,
+                        "manifest_source": "reconstructed_from_record_manifest",
+                    }
+                )
+                sample_index += 1
+
+        return pd.DataFrame(window_rows)
+
+    def load_window_manifest(
+        self, split: str, expected_samples: Optional[int] = None
+    ) -> pd.DataFrame:
+        """
+        Load per-window provenance for one split.
+
+        If a window-level manifest is missing but the older record-level
+        manifest is available, reconstruct a compatible table from
+        `num_segments` so evaluation can still write prediction artifacts.
+        """
+        window_manifest_path = os.path.join(
+            self.processed_data_path, f"{split}_window_manifest.csv"
+        )
+        if os.path.exists(window_manifest_path):
+            window_manifest = pd.read_csv(window_manifest_path)
+        else:
+            record_manifest_path = os.path.join(
+                self.processed_data_path, f"{split}_manifest.csv"
+            )
+            if not os.path.exists(record_manifest_path):
+                raise FileNotFoundError(
+                    "Window manifest not found and record-level manifest is unavailable: "
+                    f"{window_manifest_path}"
+                )
+
+            record_manifest = pd.read_csv(record_manifest_path)
+            window_manifest = self._reconstruct_window_manifest(split, record_manifest)
+            if not window_manifest.empty:
+                window_manifest.to_csv(window_manifest_path, index=False)
+                print(
+                    "Reconstructed window manifest from record manifest: "
+                    f"{window_manifest_path}"
+                )
+
+        if expected_samples is not None and len(window_manifest) != expected_samples:
+            raise ValueError(
+                f"Window manifest length mismatch for split '{split}': "
+                f"expected {expected_samples}, found {len(window_manifest)}"
+            )
+
+        return window_manifest
+
+    def load_processed_data(self, split: str) -> Tuple[np.ndarray, np.ndarray]:
+        """Load processed arrays for one split."""
+        x_path = os.path.join(self.processed_data_path, f"X_{split}.npy")
+        y_path = os.path.join(self.processed_data_path, f"y_{split}.npy")
+
+        if not os.path.exists(x_path) or not os.path.exists(y_path):
+            old_path = os.path.join(self.processed_data_path, f"{split}_data.pkl")
             if os.path.exists(old_path):
-                with open(old_path, 'rb') as f:
-                    data, labels = pickle.load(f)
+                with open(old_path, "rb") as handle:
+                    data, labels = pickle.load(handle)
                 return np.array(data), np.array(labels)
-            else:
-                raise FileNotFoundError(f"处理后的数据文件不存在: {X_path} 或 {y_path}")
-        
-        data = np.load(X_path)
+            raise FileNotFoundError(
+                f"Processed data files not found: {x_path} or {y_path}"
+            )
+
+        data = np.load(x_path)
         labels = np.load(y_path)
-        
         return data, labels
 
-    def process_and_save_data(self, output_dir: str = None, max_samples: int = None):
-        """处理数据并保存到文件
-        
-        Args:
-            output_dir: 输出目录，默认为配置中的processed_data_path
-            max_samples: 最大样本数量，用于测试
-        """
-        if output_dir is None:
-            output_dir = self.processed_data_path
-        
-        os.makedirs(output_dir, exist_ok=True)
-        
-        # 加载和处理数据
-        processed_data, labels = self.load_and_process_dataset(max_samples=max_samples)
-        
-        if len(processed_data) == 0:
-            raise ValueError("没有成功处理任何数据，请检查数据路径和格式")
-        
-        # 保存处理后的数据
-        self.save_processed_data(processed_data, labels)
-        print("数据处理完成！")
+    def process_and_save_data(
+        self, output_dir: Optional[str] = None, max_samples: Optional[int] = None
+    ):
+        """Run the full split-before-segmentation preprocessing pipeline."""
+        if output_dir is not None and output_dir != self.processed_data_path:
+            self.processed_data_path = output_dir
+        os.makedirs(self.processed_data_path, exist_ok=True)
+
+        split_datasets, split_manifests, split_window_manifests = (
+            self.load_and_process_dataset(max_samples=max_samples)
+        )
+
+        if not split_datasets:
+            raise ValueError("No records were processed successfully")
+
+        self.save_processed_data(
+            split_datasets,
+            split_manifests,
+            split_window_manifests,
+        )
+        print(
+            "Data preprocessing completed using "
+            f"{self.last_split_level}-level split-before-segmentation."
+        )
+
 
 def main():
-    """主函数：处理PTB数据"""
-    print("开始处理PTB数据库...")
-    
-    # 创建数据加载器
+    """CLI entry point for PTB-XL preprocessing."""
+    print("Starting PTB-XL preprocessing...")
     data_loader = PTBDataLoader()
-    
-    # 检查原始数据是否存在
+
     if not os.path.exists(data_loader.raw_data_path):
-        print(f"警告: 原始数据路径不存在: {data_loader.raw_data_path}")
-        print("请将PTB数据库文件放置在该目录下")
+        print(f"Warning: raw data path does not exist: {data_loader.raw_data_path}")
+        print("Please place the PTB-XL files under that directory first.")
         return
-    
-    # 加载和处理数据集
+
     try:
-        # 使用新的处理和保存方法
-        data_loader.process_and_save_data(max_samples=None)  # 设置max_samples=100进行测试
-        
-    except Exception as e:
-        print(f"数据处理过程中出错: {e}")
+        data_loader.process_and_save_data(max_samples=None)
+    except Exception as exc:
+        print(f"Data processing failed: {exc}")
         import traceback
+
         traceback.print_exc()
+
 
 if __name__ == "__main__":
     main()
