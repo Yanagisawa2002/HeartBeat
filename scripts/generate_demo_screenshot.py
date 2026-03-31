@@ -106,9 +106,32 @@ def draw_waveform(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], ecg
     row_h = height / rows
     plot_left = left + 70
     plot_right = right - 24
+    plot_top = top + 10
+    plot_bottom = bottom - 10
+    plot_height = plot_bottom - plot_top
+    row_h = plot_height / rows
+
+    draw.rounded_rectangle((left, top, right, bottom), radius=24, fill="#fffdf8", outline="#ece7de", width=1)
+
+    minor_vertical = 24
+    major_vertical = minor_vertical * 5
+    x = plot_left
+    while x <= plot_right:
+        is_major = (x - plot_left) % major_vertical == 0
+        color = (203, 97, 97, 40) if is_major else (203, 97, 97, 20)
+        draw.line((x, plot_top, x, plot_bottom), fill=color, width=1)
+        x += minor_vertical
 
     for idx in range(rows):
-        center_y = top + row_h * idx + row_h / 2
+        row_top = plot_top + row_h * idx
+        center_y = row_top + row_h / 2
+        minor_horizontal = row_h / 5
+
+        for step in range(6):
+            y = row_top + step * minor_horizontal
+            color = (203, 97, 97, 40) if step in (0, 5) else (203, 97, 97, 20)
+            draw.line((plot_left, y, plot_right, y), fill=color, width=1)
+
         draw.line((plot_left, center_y, plot_right, center_y), fill="#d8e2df", width=1)
         draw.text((left + 14, center_y - 10), leads[idx], font=FONT_SMALL, fill=MUTED)
 
@@ -244,7 +267,6 @@ def create_demo_image() -> Path:
         font=FONT_BODY,
         fill=MUTED,
     )
-    rounded(draw, (60, 954, 1540, 1214), "#ffffff", outline="#ece7de", width=1, radius=24)
     draw_waveform(draw, (60, 954, 1540, 1214), ecg)
 
     image.save(OUTPUT_PATH, format="PNG")

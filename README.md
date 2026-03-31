@@ -208,6 +208,7 @@ The web demo accepts:
 
 Bundled sample inputs live under [sample_inputs/](sample_inputs).  
 The committed sample set includes a small number of **real PTB-XL example windows** plus synthetic fallback demo inputs.
+The UI preloads a bundled PTB-XL normal example by default and renders the waveform on a light ECG-style grid for easier inspection.
 
 ### Checkpoint Discovery
 

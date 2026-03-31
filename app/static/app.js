@@ -70,6 +70,14 @@ function populateSamples(samples) {
   });
 }
 
+function chooseDefaultSample(samples) {
+  return (
+    samples.find((sample) => sample.source === "ptb-xl-v1.0.1") ||
+    samples[0] ||
+    null
+  );
+}
+
 function parseCsvText(text) {
   return text
     .trim()
@@ -126,6 +134,47 @@ function readFileText(file) {
   });
 }
 
+function drawWaveformGrid(context, leftPadding, rightPadding, width, height, leadCount) {
+  const plotLeft = leftPadding;
+  const plotRight = width - rightPadding;
+  const plotTop = 10;
+  const plotBottom = height - 10;
+  const plotWidth = plotRight - plotLeft;
+  const plotHeight = plotBottom - plotTop;
+  const segmentHeight = plotHeight / leadCount;
+
+  context.fillStyle = "#fffdf8";
+  context.fillRect(plotLeft, plotTop, plotWidth, plotHeight);
+
+  const minorVertical = 24;
+  const majorVertical = minorVertical * 5;
+
+  for (let x = plotLeft; x <= plotRight; x += minorVertical) {
+    const isMajor = (x - plotLeft) % majorVertical === 0;
+    context.strokeStyle = isMajor ? "rgba(203, 97, 97, 0.16)" : "rgba(203, 97, 97, 0.08)";
+    context.lineWidth = isMajor ? 1.1 : 0.8;
+    context.beginPath();
+    context.moveTo(x, plotTop);
+    context.lineTo(x, plotBottom);
+    context.stroke();
+  }
+
+  for (let leadIndex = 0; leadIndex < leadCount; leadIndex += 1) {
+    const rowTop = plotTop + leadIndex * segmentHeight;
+    const minorHorizontal = segmentHeight / 5;
+    for (let step = 0; step <= 5; step += 1) {
+      const y = rowTop + step * minorHorizontal;
+      const isMajor = step === 0 || step === 5;
+      context.strokeStyle = isMajor ? "rgba(203, 97, 97, 0.16)" : "rgba(203, 97, 97, 0.08)";
+      context.lineWidth = isMajor ? 1.0 : 0.7;
+      context.beginPath();
+      context.moveTo(plotLeft, y);
+      context.lineTo(plotRight, y);
+      context.stroke();
+    }
+  }
+}
+
 function drawWaveform(signalMatrix) {
   const canvas = elements.waveformCanvas;
   const context = canvas.getContext("2d");
@@ -145,6 +194,8 @@ function drawWaveform(signalMatrix) {
   const leftPadding = 60;
   const rightPadding = 16;
   const innerWidth = width - leftPadding - rightPadding;
+
+  drawWaveformGrid(context, leftPadding, rightPadding, width, height, leadCount);
 
   context.font = "14px Segoe UI";
   context.lineWidth = 1.4;
@@ -211,6 +262,10 @@ function setCurrentWaveform(matrix, label) {
 }
 
 async function loadSampleByName(fileName) {
+  return loadSampleByNameWithOptions(fileName, { announce: true });
+}
+
+async function loadSampleByNameWithOptions(fileName, options = {}) {
   const sample = state.samples.find((record) => record.file_name === fileName);
   if (!sample) {
     throw new Error("Selected sample is not available.");
@@ -225,7 +280,9 @@ async function loadSampleByName(fileName) {
   const parsed = parseCsvText(csvText);
   const normalized = normalizeWaveformShape(parsed);
   setCurrentWaveform(normalized, sample.name);
-  setStatus(`Loaded sample: ${sample.name} (${sample.source}).`);
+  if (options.announce !== false) {
+    setStatus(`Loaded sample: ${sample.name} (${sample.source}).`);
+  }
 }
 
 async function loadUploadedFile(file) {
@@ -254,17 +311,23 @@ async function loadInitialState() {
 
     populateModels(models, demoConfig.default_model);
     populateSamples(samples);
-    renderEmptyWaveform();
+    const defaultSample = chooseDefaultSample(samples);
+    if (defaultSample) {
+      elements.sampleSelect.value = defaultSample.file_name;
+      await loadSampleByNameWithOptions(defaultSample.file_name, { announce: false });
+    } else {
+      renderEmptyWaveform();
+    }
 
     if (models.length === 0) {
       elements.submitButton.disabled = true;
       setStatus(
-        `Loaded ${samples.length} bundled sample(s), but no checkpoints were found. Mount a demo checkpoint to enable inference.`,
+        `Loaded ${samples.length} bundled sample(s), including a PTB-XL example preview, but no checkpoints were found. Mount a demo checkpoint to enable inference.`,
         true
       );
     } else {
       setStatus(
-        `Ready. ${models.length} model checkpoint(s) and ${samples.length} bundled sample(s) available.`
+        `Ready. ${models.length} model checkpoint(s) and ${samples.length} bundled sample(s) available. A PTB-XL example window is preloaded for preview.`
       );
     }
   } catch (error) {
