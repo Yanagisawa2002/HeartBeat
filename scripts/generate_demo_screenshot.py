@@ -111,14 +111,14 @@ def draw_waveform(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], ecg
     plot_height = plot_bottom - plot_top
     row_h = plot_height / rows
 
-    draw.rounded_rectangle((left, top, right, bottom), radius=24, fill="#fffdf8", outline="#ece7de", width=1)
+    draw.rounded_rectangle((left, top, right, bottom), radius=24, fill="#fffdf9", outline="#ece7de", width=1)
 
     minor_vertical = 24
     major_vertical = minor_vertical * 5
     x = plot_left
     while x <= plot_right:
         is_major = (x - plot_left) % major_vertical == 0
-        color = (203, 97, 97, 40) if is_major else (203, 97, 97, 20)
+        color = "#d6dee6" if is_major else "#eef3f7"
         draw.line((x, plot_top, x, plot_bottom), fill=color, width=1)
         x += minor_vertical
 
@@ -129,7 +129,7 @@ def draw_waveform(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], ecg
 
         for step in range(6):
             y = row_top + step * minor_horizontal
-            color = (203, 97, 97, 40) if step in (0, 5) else (203, 97, 97, 20)
+            color = "#d6dee6" if step in (0, 5) else "#eef3f7"
             draw.line((plot_left, y, plot_right, y), fill=color, width=1)
 
         draw.line((plot_left, center_y, plot_right, center_y), fill="#d8e2df", width=1)

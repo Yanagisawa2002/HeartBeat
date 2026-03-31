@@ -143,7 +143,7 @@ function drawWaveformGrid(context, leftPadding, rightPadding, width, height, lea
   const plotHeight = plotBottom - plotTop;
   const segmentHeight = plotHeight / leadCount;
 
-  context.fillStyle = "#fffdf8";
+  context.fillStyle = "#fffdf9";
   context.fillRect(plotLeft, plotTop, plotWidth, plotHeight);
 
   const minorVertical = 24;
@@ -151,8 +151,8 @@ function drawWaveformGrid(context, leftPadding, rightPadding, width, height, lea
 
   for (let x = plotLeft; x <= plotRight; x += minorVertical) {
     const isMajor = (x - plotLeft) % majorVertical === 0;
-    context.strokeStyle = isMajor ? "rgba(203, 97, 97, 0.16)" : "rgba(203, 97, 97, 0.08)";
-    context.lineWidth = isMajor ? 1.1 : 0.8;
+    context.strokeStyle = isMajor ? "rgba(120, 140, 162, 0.15)" : "rgba(120, 140, 162, 0.05)";
+    context.lineWidth = isMajor ? 0.9 : 0.6;
     context.beginPath();
     context.moveTo(x, plotTop);
     context.lineTo(x, plotBottom);
@@ -165,8 +165,8 @@ function drawWaveformGrid(context, leftPadding, rightPadding, width, height, lea
     for (let step = 0; step <= 5; step += 1) {
       const y = rowTop + step * minorHorizontal;
       const isMajor = step === 0 || step === 5;
-      context.strokeStyle = isMajor ? "rgba(203, 97, 97, 0.16)" : "rgba(203, 97, 97, 0.08)";
-      context.lineWidth = isMajor ? 1.0 : 0.7;
+      context.strokeStyle = isMajor ? "rgba(120, 140, 162, 0.15)" : "rgba(120, 140, 162, 0.05)";
+      context.lineWidth = isMajor ? 0.9 : 0.6;
       context.beginPath();
       context.moveTo(plotLeft, y);
       context.lineTo(plotRight, y);
