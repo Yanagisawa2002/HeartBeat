@@ -1,0 +1,22 @@
+ECG BENCHMARK SUMMARY
+========================================
+
+Leaders
+- Best Accuracy: INCEPTION1D (0.8767)
+- Best F1 Score: INCEPTION1D (0.8774)
+- Best AUC Score: INCEPTION1D (0.9495)
+- Fastest Inference: CNN1D (0.275s)
+- Smallest Model: INCEPTION1D (0.46M params)
+- Best Practical Baseline: INCEPTION1D
+
+Interpretation
+- INCEPTION1D led the current run on the main discrimination metrics.
+- INCEPTION1D offers the strongest performance-efficiency trade-off in this run.
+- These results describe supervised binary ECG classification on PTB-XL, not clinical diagnosis.
+
+Per-model details
+- CNN1D: acc=0.8700, f1=0.8709, auc=0.9470, params=0.71M, inference=0.275s, train=0.06h
+- LSTM: acc=0.8721, f1=0.8726, auc=0.9445, params=0.90M, inference=3.117s, train=1.14h
+- RESNET1D: acc=0.8715, f1=0.8721, auc=0.9461, params=3.85M, inference=0.378s, train=0.13h
+- HYBRID_CNN_LSTM: acc=0.8641, f1=0.8650, auc=0.9472, params=1.04M, inference=0.420s, train=0.11h
+- INCEPTION1D: acc=0.8767, f1=0.8774, auc=0.9495, params=0.46M, inference=0.285s, train=0.24h

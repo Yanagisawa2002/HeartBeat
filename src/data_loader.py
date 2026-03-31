@@ -2,6 +2,7 @@ import ast
 import os
 import pickle
 from datetime import datetime
+from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
@@ -13,8 +14,10 @@ from sklearn.model_selection import train_test_split
 
 try:
     from config_utils import load_config, resolve_config_path
+    from signal_preprocessing import preprocess_ecg_signals
 except ImportError:
     from src.config_utils import load_config, resolve_config_path
+    from src.signal_preprocessing import preprocess_ecg_signals
 
 
 class PTBDataLoader:
@@ -32,6 +35,7 @@ class PTBDataLoader:
     def __init__(self, config_path: str = "config.yaml"):
         resolved_config_path = resolve_config_path(config_path)
         self.config = load_config(str(resolved_config_path))
+        self.project_root = Path(resolved_config_path).resolve().parents[1]
 
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         print(f"Using device: {self.device}")
@@ -56,11 +60,39 @@ class PTBDataLoader:
             "results_path", self.processed_data_path
         )
 
-        self.ptbxl_path = os.path.join(
-            self.raw_data_path,
-            "ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.1",
-        )
+        self.ptbxl_path = self._resolve_ptbxl_path()
         self.database_path = os.path.join(self.ptbxl_path, "ptbxl_database.csv")
+
+    def _resolve_ptbxl_path(self) -> str:
+        """
+        Resolve the PTB-XL dataset root from a few practical local layouts.
+
+        Preferred order:
+        1. Official extracted folder name under ``data/raw``
+        2. A shorter ``ptb-xl`` folder under ``data/raw``
+        3. A repository-root ``ptb-xl`` folder
+        """
+        raw_data_root = Path(self.raw_data_path).resolve()
+        candidates = [
+            raw_data_root / "ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.1",
+            raw_data_root / "ptb-xl",
+            self.project_root / "ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.1",
+            self.project_root / "ptb-xl",
+        ]
+
+        for candidate in candidates:
+            if (
+                candidate.exists()
+                and (candidate / "ptbxl_database.csv").exists()
+                and (candidate / "records100").exists()
+            ):
+                print(f"Using PTB-XL dataset root: {candidate}")
+                return str(candidate)
+
+        return str(
+            raw_data_root
+            / "ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.1"
+        )
 
     def load_ptb_record(self, record_path: str) -> Tuple[np.ndarray, Dict]:
         """Load one PTB-XL record from a WFDB path without file extension."""
@@ -81,36 +113,7 @@ class PTBDataLoader:
 
     def preprocess_signal(self, signals: np.ndarray) -> np.ndarray:
         """Apply per-lead filtering and standardization."""
-        processed_signals = []
-
-        for lead_signal in signals:
-            sos_hp = signal.butter(
-                4, 0.5, btype="high", fs=self.sampling_rate, output="sos"
-            )
-            filtered_signal = signal.sosfilt(sos_hp, lead_signal)
-
-            nyquist = self.sampling_rate / 2
-            cutoff_freq = min(40, nyquist - 1)
-            sos_lp = signal.butter(
-                4, cutoff_freq, btype="low", fs=self.sampling_rate, output="sos"
-            )
-            filtered_signal = signal.sosfilt(sos_lp, filtered_signal)
-
-            if self.sampling_rate > 120:
-                sos_notch = signal.butter(
-                    4, [49, 51], btype="bandstop", fs=self.sampling_rate, output="sos"
-                )
-                filtered_signal = signal.sosfilt(sos_notch, filtered_signal)
-
-            signal_std = np.std(filtered_signal)
-            if signal_std > 1e-8:
-                filtered_signal = (filtered_signal - np.mean(filtered_signal)) / signal_std
-            else:
-                filtered_signal = filtered_signal - np.mean(filtered_signal)
-
-            processed_signals.append(filtered_signal)
-
-        return np.array(processed_signals)
+        return preprocess_ecg_signals(signals, sampling_rate=self.sampling_rate)
 
     def extract_features(self, signals: np.ndarray) -> np.ndarray:
         """Retained for compatibility with older exploratory code."""

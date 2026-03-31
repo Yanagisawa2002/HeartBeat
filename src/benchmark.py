@@ -13,13 +13,17 @@ import torch.optim as optim
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score
 from torch.utils.data import DataLoader, TensorDataset
 
-from .comparison_models import create_comparison_model
+from .comparison_models import (
+    BENCHMARK_MODEL_NAMES,
+    SEQUENCE_FIRST_MODEL_NAMES,
+    create_comparison_model,
+)
 from .config_utils import load_config, resolve_config_path
 from .data_loader import PTBDataLoader
 from .evaluation_artifacts import generate_evaluation_artifacts
 
 
-SUPPORTED_MODELS = ("cnn1d", "lstm", "resnet1d", "hybrid_cnn_lstm")
+SUPPORTED_MODELS = BENCHMARK_MODEL_NAMES
 
 
 def normalize_model_names(model_names: Sequence[str] | None) -> List[str]:
@@ -96,7 +100,7 @@ def load_processed_splits(
 
 
 def _reshape_inputs(data: np.ndarray, model_name: str) -> np.ndarray:
-    if model_name == "lstm":
+    if model_name in SEQUENCE_FIRST_MODEL_NAMES:
         return np.transpose(data, (0, 2, 1))
     return data
 

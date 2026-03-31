@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ project_name }} Inference Demo</title>
+    <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
+</head>
+<body>
+    <main class="page-shell">
+        <section class="hero-card">
+            <div class="hero-copy">
+                <p class="eyebrow">Dockerized Inference Demo</p>
+                <h1>{{ project_name }} ECG Benchmark Demo</h1>
+                <p class="hero-text">
+                    Browser-based inference demo for the repository's fixed-window
+                    12-lead ECG classification models. This interface is intended
+                    for benchmark demonstration only and does not make any
+                    clinical deployment claim.
+                </p>
+                <div class="hero-meta">
+                    <span>{{ leads|length }} leads</span>
+                    <span>{{ signal_length }} samples per window</span>
+                    <span>{{ sampling_rate }} Hz preprocessing config</span>
+                </div>
+            </div>
+            <div class="hero-note">
+                <h2>Demo Scope</h2>
+                <ul>
+                    <li>Supports the repository's fixed-format ECG window task.</li>
+                    <li>Loads checkpoints discovered in the configured checkpoint directory.</li>
+                    <li>Bundles synthetic sample inputs for UI and deployment testing.</li>
+                </ul>
+                {% if benchmark_summary %}
+                <div class="benchmark-note">
+                    <strong>Latest full benchmark run:</strong>
+                    {{ benchmark_summary.best_model | upper }} reached accuracy {{ '%.4f'|format(benchmark_summary.best_accuracy) }}
+                    and AUC {{ '%.4f'|format(benchmark_summary.best_auc) }}.
+                    The demo defaults to this model when its checkpoint is available.
+                </div>
+                {% endif %}
+            </div>
+        </section>
+
+        <section class="grid">
+            <section class="panel">
+                <div class="panel-header">
+                    <p class="eyebrow">Input</p>
+                    <h2>Select or Upload ECG Window</h2>
+                </div>
+                <form id="predict-form" class="form-stack">
+                    <label class="field">
+                        <span>Model</span>
+                        <select id="model-select" name="model_name"></select>
+                    </label>
+                    <label class="field">
+                        <span>Built-in sample</span>
+                        <select id="sample-select" name="sample_name">
+                            <option value="">Choose a bundled demo sample</option>
+                        </select>
+                    </label>
+                    <div class="button-row">
+                        <button id="load-sample-button" type="button" class="secondary-button">Load Sample Preview</button>
+                    </div>
+                    <label class="field">
+                        <span>CSV file upload</span>
+                        <input id="csv-file" name="file" type="file" accept=".csv,text/csv">
+                    </label>
+                    <p class="supporting-text">
+                        Expected numeric CSV shape: <strong>{{ leads|length }} x {{ signal_length }}</strong>
+                        or the transposed layout <strong>{{ signal_length }} x {{ leads|length }}</strong>.
+                        Header rows are not supported. Bundled samples are synthetic demo inputs only.
+                    </p>
+                    <div class="button-row">
+                        <button id="submit-button" type="submit">Run Inference</button>
+                        <span id="status-text" class="status-text">Loading demo metadata...</span>
+                    </div>
+                </form>
+            </section>
+
+            <section class="panel result-panel">
+                <div class="panel-header">
+                    <p class="eyebrow">Output</p>
+                    <h2>Prediction Summary</h2>
+                </div>
+                <div id="empty-state" class="empty-state">
+                    Select a bundled sample or upload a valid ECG CSV, then choose an available model to run inference.
+                </div>
+                <div id="result-card" class="result-card hidden">
+                    <div class="result-main">
+                        <div>
+                            <p class="result-label">Predicted label</p>
+                            <h3 id="predicted-label">-</h3>
+                        </div>
+                        <div class="probability-chip" id="probability-chip">0.00 abnormal</div>
+                    </div>
+                    <div class="metric-grid">
+                        <div class="metric">
+                            <span>Model</span>
+                            <strong id="metric-model">-</strong>
+                        </div>
+                        <div class="metric">
+                            <span>Abnormal probability</span>
+                            <strong id="metric-abnormal">-</strong>
+                        </div>
+                        <div class="metric">
+                            <span>Normal probability</span>
+                            <strong id="metric-normal">-</strong>
+                        </div>
+                        <div class="metric">
+                            <span>Input shape</span>
+                            <strong id="metric-shape">-</strong>
+                        </div>
+                    </div>
+                    <p class="supporting-text" id="checkpoint-path"></p>
+                </div>
+            </section>
+        </section>
+
+        <section class="panel waveform-panel">
+            <div class="panel-header">
+                <p class="eyebrow">Visualization</p>
+                <h2>Waveform Preview</h2>
+            </div>
+            <p class="supporting-text">
+                The preview uses the selected or uploaded numeric CSV for quick inspection. It does not imply clinical interpretation.
+            </p>
+            <canvas id="waveform-canvas" width="1200" height="820"></canvas>
+        </section>
+
+        <section class="footer-note">
+            <p>
+                Research demo only. The benchmark task is supervised normal-vs-abnormal ECG classification on fixed-length windows, not full clinical ECG diagnosis.
+            </p>
+        </section>
+    </main>
+
+    <script>
+        window.HEARTBEAT_DEMO = {
+            expectedLeads: {{ leads|length }},
+            signalLength: {{ signal_length }},
+            leadNames: {{ leads|tojson }}
+        };
+    </script>
+    <script src="{{ url_for('static', path='app.js') }}"></script>
+</body>
+</html>

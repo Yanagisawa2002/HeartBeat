@@ -2,8 +2,18 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from typing import Optional
+from typing import Optional, Sequence
 import math
+
+
+BENCHMARK_MODEL_NAMES = (
+    "cnn1d",
+    "lstm",
+    "resnet1d",
+    "hybrid_cnn_lstm",
+    "inception1d",
+)
+SEQUENCE_FIRST_MODEL_NAMES = frozenset({"lstm"})
 
 class CNN1DModel(nn.Module):
     """1D CNN模型用于心电图分类"""
@@ -359,6 +369,180 @@ class HybridCNNLSTMModel(nn.Module):
         
         return output
 
+
+class InceptionBlock1D(nn.Module):
+    """Multi-scale 1D Inception block for ECG waveform modeling."""
+
+    def __init__(
+        self,
+        in_channels: int,
+        num_filters: int = 32,
+        bottleneck_channels: int = 32,
+        kernel_sizes: Sequence[int] = (39, 19, 9),
+    ):
+        super(InceptionBlock1D, self).__init__()
+
+        if len(kernel_sizes) != 3:
+            raise ValueError("kernel_sizes must contain exactly three values")
+
+        self.kernel_sizes = tuple(int(kernel_size) for kernel_size in kernel_sizes)
+        reduced_channels = (
+            bottleneck_channels
+            if bottleneck_channels and in_channels > 1
+            else in_channels
+        )
+
+        self.bottleneck = (
+            nn.Conv1d(in_channels, reduced_channels, kernel_size=1, bias=False)
+            if reduced_channels != in_channels
+            else nn.Identity()
+        )
+        self.conv_branches = nn.ModuleList(
+            [
+                nn.Conv1d(
+                    reduced_channels,
+                    num_filters,
+                    kernel_size=kernel_size,
+                    padding=kernel_size // 2,
+                    bias=False,
+                )
+                for kernel_size in self.kernel_sizes
+            ]
+        )
+        self.pool_branch = nn.Sequential(
+            nn.MaxPool1d(kernel_size=3, stride=1, padding=1),
+            nn.Conv1d(in_channels, num_filters, kernel_size=1, bias=False),
+        )
+        self.batch_norm = nn.BatchNorm1d(num_filters * (len(self.kernel_sizes) + 1))
+        self.activation = nn.ReLU()
+        self.out_channels = num_filters * (len(self.kernel_sizes) + 1)
+
+    def forward(self, x):
+        reduced = self.bottleneck(x)
+        branches = [conv(reduced) for conv in self.conv_branches]
+        branches.append(self.pool_branch(x))
+        output = torch.cat(branches, dim=1)
+        output = self.batch_norm(output)
+        return self.activation(output)
+
+
+class InceptionResidualStage1D(nn.Module):
+    """
+    Residual stage composed of several Inception blocks.
+
+    A shortcut every few blocks keeps the architecture easy to optimize while
+    remaining straightforward to explain as a benchmark baseline.
+    """
+
+    def __init__(
+        self,
+        in_channels: int,
+        num_filters: int = 32,
+        bottleneck_channels: int = 32,
+        kernel_sizes: Sequence[int] = (39, 19, 9),
+        num_blocks: int = 3,
+    ):
+        super(InceptionResidualStage1D, self).__init__()
+
+        blocks = []
+        current_channels = in_channels
+        for _ in range(num_blocks):
+            block = InceptionBlock1D(
+                in_channels=current_channels,
+                num_filters=num_filters,
+                bottleneck_channels=bottleneck_channels,
+                kernel_sizes=kernel_sizes,
+            )
+            blocks.append(block)
+            current_channels = block.out_channels
+
+        self.blocks = nn.ModuleList(blocks)
+        self.out_channels = current_channels
+        self.shortcut = (
+            nn.Sequential(
+                nn.Conv1d(in_channels, self.out_channels, kernel_size=1, bias=False),
+                nn.BatchNorm1d(self.out_channels),
+            )
+            if in_channels != self.out_channels
+            else nn.Identity()
+        )
+        self.activation = nn.ReLU()
+
+    def forward(self, x):
+        residual = self.shortcut(x)
+        output = x
+        for block in self.blocks:
+            output = block(output)
+        return self.activation(output + residual)
+
+
+class Inception1DModel(nn.Module):
+    """
+    Inception-style 1D benchmark model for ECG classification.
+
+    This is a lightweight InceptionTime-inspired baseline with multi-scale
+    temporal convolutions, periodic residual shortcuts, global average pooling,
+    and a simple classification head.
+    """
+
+    def __init__(
+        self,
+        input_length: int = 1000,
+        num_classes: int = 2,
+        in_channels: int = 12,
+        num_filters: int = 32,
+        bottleneck_channels: int = 32,
+        num_blocks: int = 6,
+        residual_every: int = 3,
+        kernel_sizes: Sequence[int] = (39, 19, 9),
+        dropout: float = 0.2,
+    ):
+        super(Inception1DModel, self).__init__()
+
+        if num_blocks < 1:
+            raise ValueError("num_blocks must be at least 1")
+        if residual_every < 1 or num_blocks % residual_every != 0:
+            raise ValueError("num_blocks must be divisible by residual_every")
+
+        self.input_length = input_length
+        self.num_classes = num_classes
+        self.in_channels = in_channels
+
+        self.stem = nn.Sequential(
+            nn.Conv1d(in_channels, num_filters, kernel_size=1, bias=False),
+            nn.BatchNorm1d(num_filters),
+            nn.ReLU(),
+        )
+
+        stages = []
+        current_channels = num_filters
+        for _ in range(num_blocks // residual_every):
+            stage = InceptionResidualStage1D(
+                in_channels=current_channels,
+                num_filters=num_filters,
+                bottleneck_channels=bottleneck_channels,
+                kernel_sizes=kernel_sizes,
+                num_blocks=residual_every,
+            )
+            stages.append(stage)
+            current_channels = stage.out_channels
+
+        self.stages = nn.ModuleList(stages)
+        self.global_pool = nn.AdaptiveAvgPool1d(1)
+        self.classifier = nn.Sequential(
+            nn.Dropout(dropout),
+            nn.Linear(current_channels, num_classes),
+        )
+
+    def forward(self, x):
+        # x shape: (batch_size, 12, seq_len)
+        x = self.stem(x)
+        for stage in self.stages:
+            x = stage(x)
+        x = self.global_pool(x)
+        x = x.view(x.size(0), -1)
+        return self.classifier(x)
+
 def create_comparison_model(model_name: str, input_dim: int, seq_len: int, 
                           num_classes: int = 2, device: str = 'cpu', **kwargs):
     """
@@ -411,6 +595,14 @@ def create_comparison_model(model_name: str, input_dim: int, seq_len: int,
             **kwargs
         }
         return HybridCNNLSTMModel(**model_kwargs)
+    elif model_name.upper() == 'INCEPTION1D':
+        model_kwargs = {
+            'input_length': seq_len,
+            'in_channels': input_dim,
+            'num_classes': num_classes,
+            **kwargs
+        }
+        return Inception1DModel(**model_kwargs)
     else:
         raise ValueError(f"Unsupported model: {model_name}")
 
@@ -429,7 +621,8 @@ if __name__ == "__main__":
         'LSTM': create_comparison_model('LSTM', input_dim=input_size, seq_len=seq_len),
         'Transformer': create_comparison_model('Transformer', input_dim=input_size, seq_len=seq_len),
         'ResNet1D': create_comparison_model('ResNet1D', input_dim=input_size, seq_len=seq_len),
-        'Hybrid_CNN_LSTM': create_comparison_model('Hybrid_CNN_LSTM', input_dim=input_size, seq_len=seq_len)
+        'Hybrid_CNN_LSTM': create_comparison_model('Hybrid_CNN_LSTM', input_dim=input_size, seq_len=seq_len),
+        'Inception1D': create_comparison_model('Inception1D', input_dim=input_size, seq_len=seq_len)
     }
     
     for name, model in models.items():

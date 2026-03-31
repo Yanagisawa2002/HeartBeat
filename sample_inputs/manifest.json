@@ -1,0 +1,14 @@
+[
+  {
+    "name": "Synthetic normal-like waveform",
+    "file_name": "synthetic_normal_like.csv",
+    "description": "Deterministic synthetic 12-lead waveform with smoother morphology for demo UI testing.",
+    "source": "synthetic-demo"
+  },
+  {
+    "name": "Synthetic abnormal-like waveform",
+    "file_name": "synthetic_abnormal_like.csv",
+    "description": "Deterministic synthetic 12-lead waveform with sharper peaks and added irregularity for demo UI testing.",
+    "source": "synthetic-demo"
+  }
+]

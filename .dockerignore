@@ -1,24 +1,20 @@
 __pycache__/
 *.py[cod]
+.git/
+.gitignore
 .ipynb_checkpoints/
 .pytest_cache/
 .tmp_tests/
-
-# Local runtime configuration
-config.yaml
-
-# Generated data and runtime artifacts
+tests/
+notebooks/
+data/raw/
 data/processed/
 logs/
-models/
 results/comparison/models/
 results/comparison/predictions/
 results/comparison/evaluation/
 results/comparison/preprocessing/
 artifacts/checkpoints/*.pth
-
-# Generated arrays, checkpoints, and serialized outputs
 *.npy
 *.npz
 *.pkl
-*.pth

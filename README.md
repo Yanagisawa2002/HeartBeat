@@ -1,82 +1,240 @@
-# Normal-vs-Abnormal 12-Lead ECG Classification on PTB-XL
+﻿# HeartBeat: ECG Benchmark and Dockerized Inference Demo
 
-This repository presents an exploratory biomedical machine learning benchmark on a focused supervised ECG task: distinguishing **normal** from **abnormal** 12-lead ECG recordings from **PTB-XL** using four baseline deep learning models.
+HeartBeat is a **biomedical machine learning benchmark** and **deployable web demo** for supervised **normal-vs-abnormal 12-lead ECG classification**.
 
-The project is framed as a **transparent benchmark study**, not as a clinical diagnostic system. Its main value is in the task definition, preprocessing protocol, model comparison, command-line workflow, and explicit discussion of limitations.
+The repository has two deliberately separate layers:
+
+- a **research benchmark** on **PTB-XL**
+- a **Dockerized inference demo** for fixed-format ECG windows
+
+It is intended as a **transparent portfolio project**, not as a clinical diagnostic system.
+
+![Latest full benchmark summary](results/full_benchmark_all_models_20260331/visualization/comprehensive_table.png)
 
 ## At a Glance
 
-- **Dataset:** PTB-XL from PhysioNet
-- **Task:** supervised normal-vs-abnormal 12-lead ECG classification
-- **Models:** CNN1D, LSTM, ResNet1D, Hybrid CNN-LSTM
+- **Dataset:** PTB-XL from [PhysioNet](https://physionet.org/content/ptb-xl/1.0.1/)
+- **Task:** supervised binary classification of fixed-length 12-lead ECG windows
+- **Models:** CNN1D, LSTM, ResNet1D, Hybrid CNN-LSTM, Inception1D
 - **Protocol revision:** split-before-windowing with patient-level grouping when available
 - **Imbalance handling:** label-preserving class-weighted loss
-- **Best discrimination in the committed snapshot:** LSTM
-- **Best practical baseline in the committed snapshot:** CNN1D
-
-Useful repository artifacts:
-
-- [results/comparison/model_comparison_results.csv](results/comparison/model_comparison_results.csv)
-- [results/visualization/classification_metrics_comparison.png](results/visualization/classification_metrics_comparison.png)
-- [results/visualization/performance_efficiency_tradeoff.png](results/visualization/performance_efficiency_tradeoff.png)
-- [docs/EVALUATION_RESULTS.md](docs/EVALUATION_RESULTS.md)
+- **Latest full benchmark winner:** Inception1D
+- **Deployment:** FastAPI + browser frontend + Docker
+- **Demo inputs:** bundled synthetic CSV samples or user-uploaded CSV
 
 ## Problem Statement
 
-**Task:** given a preprocessed fixed-length **12-lead ECG window** derived from a PTB-XL recording, predict whether it should be treated as **normal** or **abnormal** under the repository's binary labeling rule.
+Given a preprocessed fixed-length **12-lead ECG window**, predict whether it should be treated as:
 
-- **Input:** 12-lead ECG signal window
-- **Output:** binary label
-  - `0`: normal
-  - `1`: abnormal
-- **Primary goal:** compare discrimination performance and computational trade-offs across standard neural sequence models on a public biomedical waveform dataset
+- `0`: normal
+- `1`: abnormal
 
-This is a **binary ECG classification benchmark**, not an unsupervised anomaly detector, not a multi-label ECG interpretation system, and not a claim of clinical readiness.
+This repository implements a **binary ECG classification benchmark**. It does **not** implement:
 
-## Why This Task Matters
+- unsupervised anomaly detection
+- disease-specific multi-label ECG diagnosis
+- a clinically validated decision-support tool
 
-ECGs are among the most common cardiac tests in routine care. Even a coarse normal-versus-abnormal classification task is useful for studying how preprocessing choices, model architecture, and computational cost affect performance on real biomedical signals.
+## Dataset
 
-At the same time, this endpoint is much simpler than real clinical ECG interpretation. Strong performance here does **not** imply disease-specific diagnostic ability, uncertainty awareness, or readiness for clinical deployment.
+This project uses **PTB-XL**, a large public 12-lead ECG dataset released through **PhysioNet**.
+
+- Project page: [PTB-XL on PhysioNet](https://physionet.org/content/ptb-xl/1.0.1/)
+- Direct ZIP download: [PTB-XL v1.0.1 ZIP](https://physionet.org/content/ptb-xl/get-zip/1.0.1/)
+- Reference paper: [Wagner et al., 2020](https://pubmed.ncbi.nlm.nih.gov/32451379/)
+
+The current implementation expects the extracted dataset under:
+
+```text
+data/raw/ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.1/
+```
+
+The loader reads the low-resolution waveform files from the `records100/` directory.  
+The raw dataset is **not redistributed** in this repository.
+
+## Project Structure
+
+```text
+.
+|-- app/                # FastAPI web demo and browser frontend
+|-- artifacts/          # deployable checkpoint location
+|-- configs/            # runtime configuration
+|-- data/               # raw / processed data paths
+|-- docs/               # supplementary notes
+|-- results/            # selected committed benchmark artifacts
+|-- scripts/            # visualization and helper scripts
+|-- src/                # benchmark, models, preprocessing, inference
+|-- tests/              # lightweight smoke tests
+|-- Dockerfile
+|-- docker-compose.yml
+`-- README.md
+```
+
+Key files:
+
+- [src/data_loader.py](src/data_loader.py): PTB-XL loading, labeling, split generation, preprocessing
+- [src/benchmark.py](src/benchmark.py): training and evaluation workflow
+- [src/comparison_models.py](src/comparison_models.py): benchmark model definitions
+- [src/inference.py](src/inference.py): checkpoint loading and single-window inference
+- [src/signal_preprocessing.py](src/signal_preprocessing.py): shared preprocessing between benchmark and demo
+- [app/main.py](app/main.py): FastAPI entry point
+
+## Benchmark Models
+
+- **CNN1D:** simple convolutional baseline for local waveform morphology
+- **LSTM:** recurrent baseline for longer temporal dependencies
+- **ResNet1D:** deeper residual convolutional baseline
+- **Hybrid CNN-LSTM:** mixed convolutional and recurrent baseline
+- **Inception1D:** multi-scale 1D convolutional baseline with parallel kernels and residual shortcuts
+
+The **Inception1D** model was added as a clean, benchmark-friendly multi-scale baseline for ECG signals. It is more expressive than a plain CNN while still easier to explain and deploy than a more elaborate custom architecture.
+
+## Benchmark Workflow
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Run the benchmark pipeline:
+
+```bash
+python -m src preprocess --config configs/config.yaml
+python -m src train --config configs/config.yaml --models cnn1d lstm resnet1d hybrid_cnn_lstm inception1d
+python -m src evaluate --config configs/config.yaml --models cnn1d lstm resnet1d hybrid_cnn_lstm inception1d
+python scripts/visualize_all_models.py
+```
+
+Useful overrides:
+
+```bash
+python -m src train --config configs/config.yaml --models inception1d --epochs 20 --batch-size 16
+python -m src evaluate --config configs/config.yaml --models cnn1d inception1d --results-dir results/comparison
+```
+
+## Dockerized Web Demo
+
+The repository also includes a small **FastAPI** app with a browser frontend for **single-window ECG inference demos**.
+
+The demo supports:
+
+- choosing a bundled sample input
+- uploading a numeric ECG CSV
+- selecting an available checkpoint
+- running one-window inference
+- viewing waveform preview and class probabilities
+- defaulting to the strongest available model from the latest full benchmark run
+
+### Demo Scope
+
+The web demo is intentionally narrow:
+
+- it only supports the repository's fixed-format ECG window task
+- it only performs inference, not training
+- it is a research/demo interface, not a clinical product
+
+### Demo Architecture
+
+```mermaid
+flowchart LR
+    A["PTB-XL Raw Data"] --> B["Preprocessing + Split Protocol"]
+    B --> C["Benchmark Training"]
+    C --> D["Model Checkpoint (.pth)"]
+    D --> E["src/inference.py"]
+    E --> F["FastAPI App"]
+    F --> G["Browser Frontend"]
+    H["Bundled Synthetic Sample CSVs"] --> G
+```
+
+### Run the Web App Locally
+
+```bash
+pip install -r requirements.txt
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+Then open:
+
+```text
+http://localhost:8000
+```
+
+### Run with Docker
+
+```bash
+docker build -t heartbeat-web .
+docker run -p 8000:8000 -e HEARTBEAT_DEVICE=cpu -v ${PWD}/artifacts/checkpoints:/app/artifacts/checkpoints:ro heartbeat-web
+```
+
+Or with Compose:
+
+```bash
+docker compose up --build
+```
+
+### One-Click Demo Flow
+
+After the container starts:
+
+1. Open `http://localhost:8000`
+2. Choose a bundled sample or upload your own CSV
+3. Select an available model checkpoint
+4. Run inference and inspect the waveform preview plus prediction scores
+
+### Demo Inputs
+
+The web demo accepts:
+
+- numeric CSV only
+- shape `12 x 1000`
+- or transposed shape `1000 x 12`
+- no header rows
+
+Bundled sample inputs live under [sample_inputs/](sample_inputs).  
+These committed sample CSVs are **synthetic demo inputs**, not PTB-XL segments.
+
+### Checkpoint Discovery
+
+The demo looks for checkpoints in:
+
+- [artifacts/checkpoints/](artifacts/checkpoints)
+- `results/comparison/models/`
+
+Important:
+
+- the public repository does **not** ship a trained benchmark checkpoint by default
+- the web UI will still start without one
+- without a checkpoint, sample preview works but inference is disabled
+- when the latest full benchmark checkpoints are present, the demo defaults to **Inception1D**
+
+See [artifacts/README.md](artifacts/README.md) for the expected layout.
 
 ## Experimental Protocol
 
 ### Protocol Revision
 
-Earlier versions of this repository used a weaker preprocessing protocol. The current pipeline now assigns train/validation/test splits at the source-record level before any window segmentation, so overlapping windows from the same ECG recording cannot appear in multiple splits. The earlier label-contaminating imbalance heuristic has also been removed; class imbalance is now handled with label-preserving weighting during training.
-
-This revision improves internal rigor and auditability, but it does not remove broader limitations such as single-dataset evaluation and the absence of external validation.
-
-### Dataset and Task
-
-- **Dataset source:** PTB-XL from PhysioNet
-- **Signal type:** 12-lead ECG
-- **Implemented waveform path:** low-resolution PTB-XL signals loaded from the `records100` directory
-- **Task definition:** supervised binary classification of fixed-length ECG windows derived from PTB-XL recordings
-- **Prediction target:** `0 = normal`, `1 = abnormal`
-
-Signals are processed with high-pass and low-pass filtering, optional notch filtering when the sampling rate permits it, and per-lead standardization before window extraction.
+Earlier versions of this repository used a weaker preprocessing protocol. The current pipeline now assigns train/validation/test splits at the **source-record level before any window segmentation**, so overlapping windows from the same ECG recording cannot appear in multiple splits. The earlier label-contaminating imbalance heuristic has also been removed; class imbalance is now handled with **label-preserving class weighting** during training.
 
 ### Label Definition
 
-The repository implements a record-level binary label derived from PTB-XL `scp_codes`:
+Record-level labels are derived from PTB-XL `scp_codes`:
 
-- A record is labeled **normal** if `NORM >= 50` and there is no other non-`SR` code with confidence `>= 50`
-- Otherwise the record is labeled **abnormal**
+- **normal** if `NORM >= 50` and no other non-`SR` code has confidence `>= 50`
+- **abnormal** otherwise
 
-All windows from a source record inherit that record-level binary label. This creates a coarse normal-vs-abnormal endpoint rather than a disease-specific ECG diagnosis task.
+All windows from a source record inherit that record-level binary label.
 
 ### Split Strategy
 
-- **Split order:** split first, then segment
-- **Preferred grouping:** patient-level splitting when `patient_id` is available in the metadata
-- **Fallback:** record-level splitting when patient identifiers are unavailable or incomplete
-- **Windowing:** fixed-length segmentation with 50% overlap, applied only after split assignment
-- **Leakage control:** all windows from the same source record remain in exactly one split
+- split first, then segment
+- patient-level grouping when `patient_id` is available
+- record-level fallback otherwise
+- fixed-length windowing with 50% overlap only after split assignment
 
 ### Imbalance Handling
 
-Class imbalance is handled with **inverse-frequency class weighting** computed from the training split only and applied through weighted cross-entropy loss. The current pipeline does **not** relabel samples or move normal records into the abnormal class.
+Class imbalance is handled with **inverse-frequency class weighting** computed from the training split only. The current code does **not** relabel or contaminate classes.
 
 ### Evaluation Metrics
 
@@ -86,136 +244,105 @@ The benchmark workflow reports:
 - Weighted precision
 - Weighted recall
 - Weighted F1 score
-- ROC-AUC based on the abnormal-class probability
+- ROC-AUC
 - Parameter count
 - Inference time
-- Training time when models are trained through the current CLI workflow
-- Prediction-level outputs for the test split
-- Confusion matrix, precision-recall curve, ROC curve, threshold sweep, and per-class metrics
+- Prediction-level CSV outputs
+- Confusion matrix, ROC/PR curves, threshold sweep, and per-class metrics
 
 ## Key Results
 
-The results below should be interpreted as a **committed benchmark snapshot**, not as a guaranteed full rerun under the revised protocol unless they are regenerated from the current code path.
+The latest full local benchmark rerun is recorded in:
 
-The committed comparison artifact in [results/comparison/model_comparison_results.csv](results/comparison/model_comparison_results.csv) reports:
+- [results/full_benchmark_all_models_20260331/model_comparison_results.csv](results/full_benchmark_all_models_20260331/model_comparison_results.csv)
 
 | Model | Accuracy | F1 Score | AUC Score | Parameters | Inference Time (s) |
 |-------|----------|----------|-----------|------------|--------------------|
-| CNN1D | 0.9369 | 0.9369 | 0.9808 | 705,218 | 0.796 |
-| LSTM | **0.9412** | **0.9414** | **0.9849** | 903,298 | 5.514 |
-| ResNet1D | 0.8937 | 0.8943 | 0.9579 | 3,849,858 | 1.769 |
-| Hybrid CNN-LSTM | 0.9151 | 0.9152 | 0.9716 | 1,035,458 | 0.867 |
+| CNN1D | 0.8700 | 0.8709 | 0.9470 | 705,218 | **0.275** |
+| LSTM | 0.8721 | 0.8726 | 0.9445 | 903,298 | 3.117 |
+| ResNet1D | 0.8715 | 0.8721 | 0.9461 | 3,849,858 | 0.378 |
+| Hybrid CNN-LSTM | 0.8641 | 0.8650 | 0.9472 | 1,035,458 | 0.420 |
+| Inception1D | **0.8767** | **0.8774** | **0.9495** | **460,226** | 0.285 |
 
-In this committed snapshot, **LSTM** achieved the strongest discrimination performance across the reported classification metrics. **CNN1D** provided the most practical efficiency trade-off in terms of parameter count and reported inference time while remaining close to LSTM in Accuracy, F1, and AUC. **ResNet1D** was the largest model and also the weakest performer in this comparison, while **Hybrid CNN-LSTM** occupied a middle position without clearly outperforming the simpler CNN1D baseline.
+In this full benchmark run, **Inception1D** delivered the strongest overall discrimination performance and was also the smallest model by parameter count. **CNN1D** remained the fastest model at inference time, but the gap in runtime was small relative to the performance gain from **Inception1D**, making **Inception1D** the strongest practical default for the current repository state.
 
-The figures below are generated directly from [results/comparison/model_comparison_results.csv](results/comparison/model_comparison_results.csv) using [scripts/visualize_all_models.py](scripts/visualize_all_models.py).
+### Visualization Artifacts
 
-### Benchmark Visualizations
+The latest full-run figures are available under:
 
-![Classification metrics comparison](results/visualization/classification_metrics_comparison.png)
+- [results/full_benchmark_all_models_20260331/visualization/classification_metrics_comparison.png](results/full_benchmark_all_models_20260331/visualization/classification_metrics_comparison.png)
+- [results/full_benchmark_all_models_20260331/visualization/performance_efficiency_tradeoff.png](results/full_benchmark_all_models_20260331/visualization/performance_efficiency_tradeoff.png)
+- [results/full_benchmark_all_models_20260331/visualization/comprehensive_table.png](results/full_benchmark_all_models_20260331/visualization/comprehensive_table.png)
 
-The classification metrics are tightly clustered for the two strongest baselines, with **LSTM** holding a small but consistent lead over **CNN1D** across Accuracy, F1, and ROC-AUC.
+They were generated with:
 
-![Performance-efficiency trade-off](results/visualization/performance_efficiency_tradeoff.png)
+```bash
+python scripts/visualize_all_models.py --results-csv results/full_benchmark_all_models_20260331/model_comparison_results.csv --output-dir results/full_benchmark_all_models_20260331/visualization
+```
 
-The trade-off plot makes the practical recommendation clearer: **CNN1D** retains near-best discrimination performance with lower model size and much lower reported inference time than **LSTM**, while **ResNet1D** is both larger and weaker in this committed result snapshot.
+![Classification metrics comparison](results/full_benchmark_all_models_20260331/visualization/classification_metrics_comparison.png)
 
-I treat the discrimination metrics above as the most useful summary. Some training-time fields in the repository are less reliable than accuracy, F1, or AUC and should be interpreted more cautiously.
+![Performance-efficiency trade-off](results/full_benchmark_all_models_20260331/visualization/performance_efficiency_tradeoff.png)
 
 ## Limitations
 
-This repository is best read as a **baseline comparison study**, with several important limitations:
+This repository should be read as a **benchmark study plus deployable demo**, not as evidence of clinical readiness.
 
-- **Single-dataset evaluation:** all benchmarks are derived from PTB-XL only, so robustness across institutions, devices, acquisition settings, and patient populations is not established.
-- **Simplified binary framing:** the implemented endpoint is a coarse normal-versus-abnormal classification task based on SCP-code rules, not disease-specific ECG diagnosis or full clinical interpretation.
-- **Window labels inherit record labels:** each extracted window receives the binary label of its source record, which is practical for benchmarking but does not guarantee that abnormal morphology is present in every labeled abnormal window.
-- **No external validation:** there is no independent hospital cohort, temporal validation, or cross-dataset replication in the current repository.
-- **Generalization remains uncertain:** the revised split-before-windowing protocol improves internal validity, but it does not by itself demonstrate out-of-distribution performance or stability under dataset shift.
-- **No clinical deployment claim:** the repository does not evaluate calibration, uncertainty, subgroup performance, clinical workflow integration, or prospective utility, and should be interpreted as a research benchmark rather than a deployable medical system.
+- **Single-dataset evaluation:** all reported benchmark results come from PTB-XL
+- **Simplified endpoint:** the task is coarse normal-vs-abnormal classification, not disease-specific diagnosis
+- **No external validation:** no independent cohort or cross-dataset replication is included
+- **Window labels inherit record labels:** abnormal windows may not always contain localized abnormal morphology
+- **Generalization remains uncertain:** protocol fixes improve internal validity but do not prove robustness under dataset shift
+- **No clinical deployment claim:** the demo is an inference interface for a benchmark model, not a validated medical tool
 
-Because of these limitations, the current results should be interpreted as **exploratory benchmark results**, not as evidence of clinical deployment readiness.
+## Testing
 
-## Reproducibility
+The repository includes lightweight tests for:
 
-### What Is Committed In This Repository
+- CLI dispatch
+- config loading
+- model instantiation
+- inference utilities
+- mocked preprocessing sanity checks
+- API smoke tests when optional web dependencies are installed
 
-- dependency list in [requirements.txt](requirements.txt)
-- a default runtime config in [configs/config.yaml](configs/config.yaml)
-- model definitions in [src/comparison_models.py](src/comparison_models.py)
-- data loading and preprocessing code in [src/data_loader.py](src/data_loader.py)
-- a module-based workflow in [src/cli.py](src/cli.py) and [src/benchmark.py](src/benchmark.py)
-- evaluation artifact generation in [src/evaluation_artifacts.py](src/evaluation_artifacts.py)
-- visualization helpers in [scripts/visualize_all_models.py](scripts/visualize_all_models.py)
-- committed summary results in [results/comparison/model_comparison_results.csv](results/comparison/model_comparison_results.csv)
-- committed summary figures under [results/visualization/](results/visualization)
-- supplementary notes in [docs/EVALUATION_RESULTS.md](docs/EVALUATION_RESULTS.md)
-
-### What The Pipeline Generates When Rerun
-
-After preprocessing, training, and evaluation, the current code path writes:
-
-- processed arrays under `data/processed/`
-- per-split record and window manifests under `data/processed/`
-- a combined split manifest under `results/comparison/preprocessing/`
-- one prediction CSV per model under `results/comparison/predictions/`
-- per-model evaluation artifacts under `results/comparison/evaluation/`
-
-These generated artifacts are intentionally excluded from version control in the public repository.
-
-### Tested Environment
-
-- smoke-checked on Windows with Python 3.13
-- `python -m src --help` runs successfully in the published repository
-- `python -m unittest discover -s tests -v` passes, with one skipped test when the optional `wfdb` dependency is unavailable
-- full preprocessing requires PTB-XL and the waveform-loading dependency stack
-
-### Intended Rerun Path
+Run them with:
 
 ```bash
-pip install -r requirements.txt
-python -m src preprocess --config configs/config.yaml
-python -m src train --config configs/config.yaml --models cnn1d lstm resnet1d hybrid_cnn_lstm
-python -m src evaluate --config configs/config.yaml --models cnn1d lstm resnet1d hybrid_cnn_lstm
-python scripts/visualize_all_models.py
+python -m unittest discover -s tests -v
 ```
 
-### Current Gaps
+## Reproducibility Notes
 
-- the processed split files used for the committed runs are not included
-- exact regeneration of the published numbers from a fresh checkout is still **not guaranteed**
-- some committed results may predate the current preprocessing protocol revision
+Committed in this repository:
 
-### Data Setup
+- benchmark code
+- web demo code
+- runtime configuration
+- selected summary results
+- synthetic sample inputs for deployment testing
 
-The loader expects PTB-XL under:
+Not committed by default:
 
-```text
-data/raw/ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.1/
-```
+- raw PTB-XL data
+- processed splits
+- generated prediction artifacts
+- trained checkpoints
 
-The raw data itself is not redistributed in this repository.
-
-## Code Organization
-
-- [src/](src): core data loading, model definitions, benchmark workflow, CLI, and evaluation artifact generation
-- [scripts/](scripts): setup, visualization, and supplementary helper scripts
-- [configs/](configs): runtime configuration
-- [tests/](tests): lightweight checks for CLI dispatch, config loading, model instantiation, and mocked preprocessing sanity
-- [results/](results): selected committed benchmark summaries
-- [docs/](docs): supplementary notes
+This keeps the public repository smaller and easier to inspect, but exact reruns of previously committed benchmark numbers are not guaranteed from a fresh checkout without the missing data artifacts.
 
 ## Additional Documentation
 
-- Supplementary evaluation note: [docs/EVALUATION_RESULTS.md](docs/EVALUATION_RESULTS.md)
+- [docs/EVALUATION_RESULTS.md](docs/EVALUATION_RESULTS.md)
+- [sample_inputs/README.md](sample_inputs/README.md)
+- [artifacts/README.md](artifacts/README.md)
 
 ## Summary
 
-This project is strongest when presented as:
+HeartBeat is strongest when presented as:
 
-- a focused **normal-vs-abnormal ECG classification benchmark**
-- built on a real public biomedical dataset
-- comparing multiple neural baselines under a clearer protocol than the original version
-- with a reproducible command-line workflow and lightweight tests
-- and with explicit acknowledgment of current experimental and reproducibility limitations
+- a focused **biomedical ML benchmark** on PTB-XL
+- with a revised and more defensible preprocessing protocol
+- plus a **Dockerized inference demo** with a browser frontend
+- and with explicit limits on what the project does and does not claim
 
-That framing is more credible than presenting the repository as a polished framework or as a clinically validated medical AI system.

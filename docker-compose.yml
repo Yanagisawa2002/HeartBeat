@@ -1,0 +1,12 @@
+services:
+  heartbeat-web:
+    build: .
+    container_name: heartbeat-web
+    ports:
+      - "8000:8000"
+    environment:
+      HEARTBEAT_DEVICE: cpu
+      HEARTBEAT_CONFIG_PATH: /app/configs/config.yaml
+      HEARTBEAT_CHECKPOINT_DIR: /app/artifacts/checkpoints
+    volumes:
+      - ./artifacts/checkpoints:/app/artifacts/checkpoints:ro

@@ -98,9 +98,9 @@ def print_next_steps() -> None:
     print("3. Preprocess data:")
     print("   python -m src preprocess --config configs/config.yaml")
     print("4. Train models:")
-    print("   python -m src train --config configs/config.yaml --models cnn1d lstm resnet1d hybrid_cnn_lstm")
+    print("   python -m src train --config configs/config.yaml --models cnn1d lstm resnet1d hybrid_cnn_lstm inception1d")
     print("5. Evaluate saved checkpoints:")
-    print("   python -m src evaluate --config configs/config.yaml --models cnn1d lstm resnet1d hybrid_cnn_lstm")
+    print("   python -m src evaluate --config configs/config.yaml --models cnn1d lstm resnet1d hybrid_cnn_lstm inception1d")
     print("6. Generate comparison plots:")
     print("   python scripts/visualize_all_models.py")
 

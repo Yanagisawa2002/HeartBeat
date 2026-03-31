@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import argparse
 
+from .comparison_models import BENCHMARK_MODEL_NAMES
 from .config_utils import resolve_config_path
 
 
-SUPPORTED_MODELS = ("cnn1d", "lstm", "resnet1d", "hybrid_cnn_lstm")
+SUPPORTED_MODELS = BENCHMARK_MODEL_NAMES
 
 
 def build_parser() -> argparse.ArgumentParser:

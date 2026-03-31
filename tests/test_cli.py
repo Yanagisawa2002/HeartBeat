@@ -31,6 +31,21 @@ class TestCLI(unittest.TestCase):
         self.assertEqual(args.epochs, 3)
         self.assertEqual(args.batch_size, 8)
 
+    def test_build_parser_accepts_inception1d(self) -> None:
+        parser = cli.build_parser()
+        args = parser.parse_args(
+            [
+                "--config",
+                "configs/config.yaml",
+                "train",
+                "--models",
+                "inception1d",
+            ]
+        )
+
+        self.assertEqual(args.command, "train")
+        self.assertEqual(args.models, ["inception1d"])
+
     def test_main_dispatches_preprocess(self) -> None:
         mock_loader_cls = MagicMock()
         loader = mock_loader_cls.return_value
