@@ -126,6 +126,16 @@ The demo supports:
 - viewing waveform preview and class probabilities
 - defaulting to the strongest available model from the latest full benchmark run
 
+![HeartBeat web demo homepage preview](docs/images/web_demo_homepage.png)
+
+The preview above is generated from the current demo layout with a bundled synthetic sample and the default `Inception1D` checkpoint.
+
+Regenerate it with:
+
+```bash
+python scripts/generate_demo_screenshot.py
+```
+
 ### Demo Scope
 
 The web demo is intentionally narrow:

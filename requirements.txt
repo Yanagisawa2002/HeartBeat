@@ -9,6 +9,7 @@ wfdb>=4.0.0
 PyYAML>=6.0
 tqdm>=4.62.0
 tensorboard>=2.8.0
+Pillow>=9.0.0
 fastapi>=0.110.0
 uvicorn>=0.30.0
 Jinja2>=3.1.0
