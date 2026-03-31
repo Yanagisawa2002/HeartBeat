@@ -14,7 +14,6 @@ results/comparison/models/
 results/comparison/predictions/
 results/comparison/evaluation/
 results/comparison/preprocessing/
-artifacts/checkpoints/*.pth
 *.npy
 *.npz
 *.pkl

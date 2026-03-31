@@ -24,13 +24,14 @@
                     <span>{{ sampling_rate }} Hz preprocessing config</span>
                 </div>
             </div>
-            <div class="hero-note">
-                <h2>Demo Scope</h2>
-                <ul>
-                    <li>Supports the repository's fixed-format ECG window task.</li>
-                    <li>Loads checkpoints discovered in the configured checkpoint directory.</li>
-                    <li>Bundles synthetic sample inputs for UI and deployment testing.</li>
-                </ul>
+                <div class="hero-note">
+                    <h2>Demo Scope</h2>
+                    <ul>
+                        <li>Supports the repository's fixed-format ECG window task.</li>
+                        <li>Loads checkpoints discovered in the configured checkpoint directory.</li>
+                        <li>Lists every bundled checkpoint in the model selector for side-by-side demo use.</li>
+                        <li>Bundles synthetic sample inputs for UI and deployment testing.</li>
+                    </ul>
                 {% if benchmark_summary %}
                 <div class="benchmark-note">
                     <strong>Latest full benchmark run:</strong>

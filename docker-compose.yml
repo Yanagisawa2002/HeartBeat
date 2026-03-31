@@ -8,5 +8,3 @@ services:
       HEARTBEAT_DEVICE: cpu
       HEARTBEAT_CONFIG_PATH: /app/configs/config.yaml
       HEARTBEAT_CHECKPOINT_DIR: /app/artifacts/checkpoints
-    volumes:
-      - ./artifacts/checkpoints:/app/artifacts/checkpoints:ro

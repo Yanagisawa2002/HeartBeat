@@ -164,7 +164,7 @@ http://localhost:8000
 
 ```bash
 docker build -t heartbeat-web .
-docker run -p 8000:8000 -e HEARTBEAT_DEVICE=cpu -v ${PWD}/artifacts/checkpoints:/app/artifacts/checkpoints:ro heartbeat-web
+docker run -p 8000:8000 -e HEARTBEAT_DEVICE=cpu heartbeat-web
 ```
 
 Or with Compose:
@@ -175,11 +175,16 @@ docker compose up --build
 
 ### One-Click Demo Flow
 
+The Docker image bundles every benchmark checkpoint found under
+`artifacts/checkpoints/` at build time. In the current workspace, that means
+the container starts with **all five benchmark models available in the UI**
+without any extra volume mounts.
+
 After the container starts:
 
 1. Open `http://localhost:8000`
 2. Choose a bundled sample or upload your own CSV
-3. Select an available model checkpoint
+3. Select any available model from the dropdown: `cnn1d`, `lstm`, `resnet1d`, `hybrid_cnn_lstm`, or `inception1d`
 4. Run inference and inspect the waveform preview plus prediction scores
 
 ### Demo Inputs
@@ -203,10 +208,10 @@ The demo looks for checkpoints in:
 
 Important:
 
-- the public repository does **not** ship a trained benchmark checkpoint by default
-- the web UI will still start without one
-- without a checkpoint, sample preview works but inference is disabled
-- when the latest full benchmark checkpoints are present, the demo defaults to **Inception1D**
+- the Docker image bundles any `.pth` checkpoints present under `artifacts/checkpoints/` during build
+- in this workspace, the intended image includes **all five benchmark models**
+- the web UI lists every bundled model in the selector and defaults to **Inception1D**
+- if you build from a checkout without local checkpoint files, the UI still starts but inference remains unavailable until checkpoints are added
 
 See [artifacts/README.md](artifacts/README.md) for the expected layout.
 
@@ -327,9 +332,9 @@ Not committed by default:
 - raw PTB-XL data
 - processed splits
 - generated prediction artifacts
-- trained checkpoints
+- trained checkpoints in version control
 
-This keeps the public repository smaller and easier to inspect, but exact reruns of previously committed benchmark numbers are not guaranteed from a fresh checkout without the missing data artifacts.
+This keeps the public repository smaller and easier to inspect. A local or release build can still bundle demo checkpoints into the Docker image, but exact reruns of previously committed benchmark numbers are not guaranteed from a fresh checkout without the missing data artifacts.
 
 ## Additional Documentation
 
