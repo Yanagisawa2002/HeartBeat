@@ -23,8 +23,8 @@ REQUIRED_DIRS = [
     "data/processed",
     "docs",
     "logs",
-    "models",
-    "notebooks",
+    "artifacts",
+    "artifacts/checkpoints",
     "results",
     "scripts",
 ]

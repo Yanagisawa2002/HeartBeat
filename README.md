@@ -30,6 +30,8 @@ The latest full local benchmark rerun is recorded in:
 
 - [results/full_benchmark_all_models_20260331/model_comparison_results.csv](results/full_benchmark_all_models_20260331/model_comparison_results.csv)
 
+This directory is the **authoritative committed benchmark snapshot** referenced throughout this README.
+
 | Model | Accuracy | F1 Score | AUC Score | Parameters | Inference Time (s) |
 |-------|----------|----------|-----------|------------|--------------------|
 | CNN1D | 0.8700 | 0.8709 | 0.9470 | 705,218 | **0.275** |
