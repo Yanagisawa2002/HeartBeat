@@ -1,13 +1,13 @@
 ﻿# HeartBeat: ECG Benchmark and Dockerized Inference Demo
 
-HeartBeat is a **biomedical machine learning benchmark** and **deployable web demo** for supervised **normal-vs-abnormal 12-lead ECG classification**.
+HeartBeat is a **biomedical ML benchmark** and **Dockerized inference demo** for supervised **normal-vs-abnormal 12-lead ECG classification**.
 
 The repository has two deliberately separate layers:
 
-- a **research benchmark** on **PTB-XL**
-- a **Dockerized inference demo** for fixed-format ECG windows
+- a **PTB-XL benchmark pipeline** for preprocessing, training, and evaluation
+- a **deployable web demo** for fixed-format ECG-window inference
 
-It is intended as a **transparent portfolio project**, not as a clinical diagnostic system.
+It is designed as a **transparent portfolio project** rather than a clinical product claim.
 
 ![HeartBeat web demo homepage preview](docs/images/web_demo_homepage.png)
 
@@ -23,6 +23,24 @@ The screenshot above shows the deployable demo interface with a preloaded **PTB-
 - **Latest full benchmark winner:** Inception1D
 - **Deployment:** FastAPI + browser frontend + Docker
 - **Demo inputs:** bundled PTB-XL example windows, synthetic fallback CSVs, or user-uploaded CSV
+
+## Key Results
+
+The latest full local benchmark rerun is recorded in:
+
+- [results/full_benchmark_all_models_20260331/model_comparison_results.csv](results/full_benchmark_all_models_20260331/model_comparison_results.csv)
+
+| Model | Accuracy | F1 Score | AUC Score | Parameters | Inference Time (s) |
+|-------|----------|----------|-----------|------------|--------------------|
+| CNN1D | 0.8700 | 0.8709 | 0.9470 | 705,218 | **0.275** |
+| LSTM | 0.8721 | 0.8726 | 0.9445 | 903,298 | 3.117 |
+| ResNet1D | 0.8715 | 0.8721 | 0.9461 | 3,849,858 | 0.378 |
+| Hybrid CNN-LSTM | 0.8641 | 0.8650 | 0.9472 | 1,035,458 | 0.420 |
+| Inception1D | **0.8767** | **0.8774** | **0.9495** | **460,226** | 0.285 |
+
+In this full benchmark run, **Inception1D** delivered the strongest overall discrimination performance and was also the smallest model by parameter count. **CNN1D** remained the fastest model at inference time, but the runtime gap was small relative to the performance gain from **Inception1D**, making **Inception1D** the strongest practical default for the current repository state.
+
+![Latest full benchmark summary](results/full_benchmark_all_models_20260331/visualization/comprehensive_table.png)
 
 ## Problem Statement
 
@@ -53,33 +71,6 @@ data/raw/ptb-xl-a-large-publicly-available-electrocardiography-dataset-1.0.1/
 
 The loader reads the low-resolution waveform files from the `records100/` directory.  
 The raw dataset is **not redistributed** in this repository.
-
-## Project Structure
-
-```text
-.
-|-- app/                # FastAPI web demo and browser frontend
-|-- artifacts/          # deployable checkpoint location
-|-- configs/            # runtime configuration
-|-- data/               # raw / processed data paths
-|-- docs/               # supplementary notes
-|-- results/            # selected committed benchmark artifacts
-|-- scripts/            # visualization and helper scripts
-|-- src/                # benchmark, models, preprocessing, inference
-|-- tests/              # lightweight smoke tests
-|-- Dockerfile
-|-- docker-compose.yml
-`-- README.md
-```
-
-Key files:
-
-- [src/data_loader.py](src/data_loader.py): PTB-XL loading, labeling, split generation, preprocessing
-- [src/benchmark.py](src/benchmark.py): training and evaluation workflow
-- [src/comparison_models.py](src/comparison_models.py): benchmark model definitions
-- [src/inference.py](src/inference.py): checkpoint loading and single-window inference
-- [src/signal_preprocessing.py](src/signal_preprocessing.py): shared preprocessing between benchmark and demo
-- [app/main.py](app/main.py): FastAPI entry point
 
 ## Benchmark Models
 
@@ -266,24 +257,6 @@ The benchmark workflow reports:
 - Prediction-level CSV outputs
 - Confusion matrix, ROC/PR curves, threshold sweep, and per-class metrics
 
-## Key Results
-
-The latest full local benchmark rerun is recorded in:
-
-- [results/full_benchmark_all_models_20260331/model_comparison_results.csv](results/full_benchmark_all_models_20260331/model_comparison_results.csv)
-
-| Model | Accuracy | F1 Score | AUC Score | Parameters | Inference Time (s) |
-|-------|----------|----------|-----------|------------|--------------------|
-| CNN1D | 0.8700 | 0.8709 | 0.9470 | 705,218 | **0.275** |
-| LSTM | 0.8721 | 0.8726 | 0.9445 | 903,298 | 3.117 |
-| ResNet1D | 0.8715 | 0.8721 | 0.9461 | 3,849,858 | 0.378 |
-| Hybrid CNN-LSTM | 0.8641 | 0.8650 | 0.9472 | 1,035,458 | 0.420 |
-| Inception1D | **0.8767** | **0.8774** | **0.9495** | **460,226** | 0.285 |
-
-In this full benchmark run, **Inception1D** delivered the strongest overall discrimination performance and was also the smallest model by parameter count. **CNN1D** remained the fastest model at inference time, but the gap in runtime was small relative to the performance gain from **Inception1D**, making **Inception1D** the strongest practical default for the current repository state.
-
-![Latest full benchmark summary](results/full_benchmark_all_models_20260331/visualization/comprehensive_table.png)
-
 ### Visualization Artifacts
 
 The latest full-run figures are available under:
@@ -338,7 +311,7 @@ Committed in this repository:
 - web demo code
 - runtime configuration
 - selected summary results
-- synthetic sample inputs for deployment testing
+- bundled demo inputs, including a small number of PTB-XL example windows plus synthetic fallbacks
 
 Not committed by default:
 
@@ -348,6 +321,33 @@ Not committed by default:
 - trained checkpoints in version control
 
 This keeps the public repository smaller and easier to inspect. A local or release build can still bundle demo checkpoints into the Docker image, but exact reruns of previously committed benchmark numbers are not guaranteed from a fresh checkout without the missing data artifacts.
+
+## Project Structure
+
+```text
+.
+|-- app/                # FastAPI web demo and browser frontend
+|-- artifacts/          # deployable checkpoint location
+|-- configs/            # runtime configuration
+|-- data/               # raw / processed data paths
+|-- docs/               # supplementary notes
+|-- results/            # selected committed benchmark artifacts
+|-- scripts/            # visualization and helper scripts
+|-- src/                # benchmark, models, preprocessing, inference
+|-- tests/              # lightweight smoke tests
+|-- Dockerfile
+|-- docker-compose.yml
+`-- README.md
+```
+
+Key files:
+
+- [src/data_loader.py](src/data_loader.py): PTB-XL loading, labeling, split generation, preprocessing
+- [src/benchmark.py](src/benchmark.py): training and evaluation workflow
+- [src/comparison_models.py](src/comparison_models.py): benchmark model definitions
+- [src/inference.py](src/inference.py): checkpoint loading and single-window inference
+- [src/signal_preprocessing.py](src/signal_preprocessing.py): shared preprocessing between benchmark and demo
+- [app/main.py](app/main.py): FastAPI entry point
 
 ## Additional Documentation
 
