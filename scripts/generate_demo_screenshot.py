@@ -27,7 +27,7 @@ SAMPLE_MANIFEST_PATH = PROJECT_ROOT / "sample_inputs" / "manifest.json"
 MODEL_NAME = "inception1d"
 
 WIDTH = 1600
-HEIGHT = 1300
+HEIGHT = 1360
 
 BG = "#f3efe6"
 PANEL = "#fffdf8"
@@ -60,9 +60,23 @@ def rounded(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], fill: str
     draw.rounded_rectangle(box, radius=radius, fill=fill, outline=outline, width=width)
 
 
-def wrapped(draw: ImageDraw.ImageDraw, text: str, xy: tuple[int, int], font: ImageFont.ImageFont, fill: str, width_chars: int, line_spacing: int = 6) -> None:
-    lines = textwrap.wrap(text, width=width_chars)
-    draw.multiline_text(xy, "\n".join(lines), font=font, fill=fill, spacing=line_spacing)
+def wrapped_lines(text: str, width_chars: int) -> list[str]:
+    return textwrap.wrap(text, width=width_chars)
+
+
+def wrapped(
+    draw: ImageDraw.ImageDraw,
+    text: str,
+    xy: tuple[int, int],
+    font: ImageFont.ImageFont,
+    fill: str,
+    width_chars: int,
+    line_spacing: int = 6,
+) -> tuple[int, int, int, int]:
+    lines = wrapped_lines(text, width_chars=width_chars)
+    content = "\n".join(lines)
+    draw.multiline_text(xy, content, font=font, fill=fill, spacing=line_spacing)
+    return draw.multiline_textbbox(xy, content, font=font, spacing=line_spacing)
 
 
 def read_benchmark_summary() -> dict[str, str | float]:
@@ -159,9 +173,9 @@ def create_demo_image() -> Path:
     draw.ellipse((1080, -120, 1760, 360), fill="#e4ebf4")
 
     hero = (40, 36, 1560, 336)
-    left_panel = (40, 368, 760, 820)
-    right_panel = (800, 368, 1560, 820)
-    waveform_panel = (40, 848, 1560, 1258)
+    left_panel = (40, 368, 760, 860)
+    right_panel = (800, 368, 1560, 860)
+    waveform_panel = (40, 888, 1560, 1320)
 
     rounded(draw, hero, PANEL, outline=BORDER, width=2, radius=32)
     rounded(draw, left_panel, PANEL, outline=BORDER, width=2)
@@ -171,7 +185,7 @@ def create_demo_image() -> Path:
     # Hero content
     draw.text((76, 72), "Dockerized Inference Demo", font=FONT_LABEL, fill=ACCENT)
     draw.text((76, 104), "HeartBeat ECG Benchmark Demo", font=FONT_H1, fill=TEXT)
-    wrapped(
+    hero_text_bbox = wrapped(
         draw,
         "Browser-based inference demo for the repository's fixed-window 12-lead ECG classification models. This preview uses a bundled PTB-XL example window and the latest Inception1D checkpoint.",
         (76, 182),
@@ -180,7 +194,7 @@ def create_demo_image() -> Path:
         width_chars=52,
     )
 
-    pill_y = 270
+    pill_y = hero_text_bbox[3] + 18
     pills = ["12 leads", "1000 samples per window", "100 Hz preprocessing config"]
     pill_x = 76
     for pill in pills:
@@ -208,7 +222,7 @@ def create_demo_image() -> Path:
     draw.text((68, 392), "Input", font=FONT_LABEL, fill=ACCENT)
     draw.text((68, 420), "Select or Upload ECG Window", font=FONT_H2, fill=TEXT)
 
-    field_y = 492
+    field_y = 486
     for label, value in [
         ("Model", prediction["model_name"]),
         ("Built-in sample", sample_meta["name"]),
@@ -217,11 +231,13 @@ def create_demo_image() -> Path:
         draw.text((68, field_y), label, font=FONT_LABEL, fill=TEXT)
         rounded(draw, (68, field_y + 28, 732, field_y + 84), "#ffffff", outline="#d7d7d7", radius=18)
         draw.text((86, field_y + 46), value, font=FONT_BODY, fill=TEXT)
-        field_y += 106
+        field_y += 96
 
-    rounded(draw, (68, 734, 252, 778), ACCENT, radius=18)
-    draw.text((104, 746), "Run Inference", font=FONT_LABEL, fill="#ffffff")
-    draw.text((68, 792), f"Ready. {len(models)} models and 4 bundled samples available.", font=FONT_SMALL, fill=MUTED)
+    button_top = field_y + 6
+    button_bottom = button_top + 44
+    rounded(draw, (68, button_top, 252, button_bottom), ACCENT, radius=18)
+    draw.text((104, button_top + 12), "Run Inference", font=FONT_LABEL, fill="#ffffff")
+    draw.text((68, button_bottom + 12), f"Ready. {len(models)} models and 4 bundled samples available.", font=FONT_SMALL, fill=MUTED)
 
     # Output panel
     draw.text((828, 392), "Output", font=FONT_LABEL, fill=ACCENT)
@@ -259,15 +275,18 @@ def create_demo_image() -> Path:
         draw.text((x0 + 18, y0 + 42), value, font=FONT_H3, fill=TEXT)
 
     # Waveform panel
-    draw.text((68, 840), "Visualization", font=FONT_LABEL, fill=ACCENT)
-    draw.text((68, 868), "Waveform Preview", font=FONT_H2, fill=TEXT)
+    waveform_label_y = waveform_panel[1] + 28
+    waveform_title_y = waveform_panel[1] + 56
+    waveform_desc_y = waveform_panel[1] + 98
+    draw.text((68, waveform_label_y), "Visualization", font=FONT_LABEL, fill=ACCENT)
+    draw.text((68, waveform_title_y), "Waveform Preview", font=FONT_H2, fill=TEXT)
     draw.text(
-        (68, 910),
+        (68, waveform_desc_y),
         "Real PTB-XL example waveform shown as it appears in the demo input preview. The inference above uses the repository's standard preprocessing pipeline.",
         font=FONT_BODY,
         fill=MUTED,
     )
-    draw_waveform(draw, (60, 954, 1540, 1214), ecg)
+    draw_waveform(draw, (60, waveform_panel[1] + 138, 1540, waveform_panel[3] - 42), ecg)
 
     image.save(OUTPUT_PATH, format="PNG")
     return OUTPUT_PATH
