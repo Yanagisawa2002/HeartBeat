@@ -128,7 +128,7 @@ The demo supports:
 
 ![HeartBeat web demo homepage preview](docs/images/web_demo_homepage.png)
 
-The preview above is generated from the current demo layout with a bundled synthetic sample and the default `Inception1D` checkpoint.
+The preview above is generated from the current demo layout with a bundled **PTB-XL example window** and the default `Inception1D` checkpoint.
 
 Regenerate it with:
 
@@ -154,7 +154,7 @@ flowchart LR
     D --> E["src/inference.py"]
     E --> F["FastAPI App"]
     F --> G["Browser Frontend"]
-    H["Bundled Synthetic Sample CSVs"] --> G
+    H["Bundled PTB-XL Example and Synthetic Sample CSVs"] --> G
 ```
 
 ### Run the Web App Locally
@@ -207,7 +207,7 @@ The web demo accepts:
 - no header rows
 
 Bundled sample inputs live under [sample_inputs/](sample_inputs).  
-These committed sample CSVs are **synthetic demo inputs**, not PTB-XL segments.
+The committed sample set includes a small number of **real PTB-XL example windows** plus synthetic fallback demo inputs.
 
 ### Checkpoint Discovery
 

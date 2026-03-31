@@ -2,11 +2,18 @@
 
 This directory contains **bundled demo inputs** for the Dockerized web UI.
 
+The committed sample set now includes two kinds of files:
+
+- **PTB-XL example windows:** a small number of real public ECG examples used to
+  make the demo preview look like actual ECG data
+- **Synthetic fallback waveforms:** deterministic numeric inputs kept for UI and
+  deployment testing
+
 Important:
 
-- The committed CSV files are **synthetic demo waveforms**
-- They are included only to make the browser demo and Docker deployment testable
-- They are **not** PTB-XL samples and **not** benchmark artifacts
+- the full PTB-XL dataset is **not** redistributed here
+- only a very small number of individual example windows are bundled for demo use
+- these sample files are for **inference UI preview**, not for benchmark training
 
 Supported CSV shapes:
 

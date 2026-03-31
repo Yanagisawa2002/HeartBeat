@@ -1,14 +1,26 @@
 [
   {
+    "name": "PTB-XL normal example (ecg_id 1)",
+    "file_name": "ptbxl_normal_ecg_00001.csv",
+    "description": "Single public PTB-XL low-resolution record used as a realistic normal ECG demo window.",
+    "source": "ptb-xl-v1.0.1"
+  },
+  {
+    "name": "PTB-XL abnormal example (ecg_id 17)",
+    "file_name": "ptbxl_abnormal_ecg_00017.csv",
+    "description": "Single public PTB-XL low-resolution record used as a realistic abnormal ECG demo window.",
+    "source": "ptb-xl-v1.0.1"
+  },
+  {
     "name": "Synthetic normal-like waveform",
     "file_name": "synthetic_normal_like.csv",
-    "description": "Deterministic synthetic 12-lead waveform with smoother morphology for demo UI testing.",
+    "description": "Deterministic synthetic 12-lead waveform kept for demo UI fallback testing.",
     "source": "synthetic-demo"
   },
   {
     "name": "Synthetic abnormal-like waveform",
     "file_name": "synthetic_abnormal_like.csv",
-    "description": "Deterministic synthetic 12-lead waveform with sharper peaks and added irregularity for demo UI testing.",
+    "description": "Deterministic synthetic 12-lead waveform kept for demo UI fallback testing.",
     "source": "synthetic-demo"
   }
 ]

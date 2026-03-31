@@ -81,7 +81,9 @@ class TestWebDemoAPI(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         payload = response.json()
         self.assertGreaterEqual(len(payload), 2)
-        self.assertEqual(payload[0]["source"], "synthetic-demo")
+        sources = {record["source"] for record in payload}
+        self.assertIn("ptb-xl-v1.0.1", sources)
+        self.assertIn("synthetic-demo", sources)
 
     def test_predict_file_endpoint(self) -> None:
         synthetic_ecg = np.random.randn(12, 1000).astype(np.float32)

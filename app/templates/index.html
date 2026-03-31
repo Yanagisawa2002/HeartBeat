@@ -70,7 +70,7 @@
                     <p class="supporting-text">
                         Expected numeric CSV shape: <strong>{{ leads|length }} x {{ signal_length }}</strong>
                         or the transposed layout <strong>{{ signal_length }} x {{ leads|length }}</strong>.
-                        Header rows are not supported. Bundled samples are synthetic demo inputs only.
+                        Header rows are not supported. Bundled samples include PTB-XL example windows plus synthetic fallback demo inputs.
                     </p>
                     <div class="button-row">
                         <button id="submit-button" type="submit">Run Inference</button>

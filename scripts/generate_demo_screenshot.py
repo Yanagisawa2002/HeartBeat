@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import textwrap
 import sys
+import json
 
 import numpy as np
 import pandas as pd
@@ -21,7 +22,8 @@ RESULTS_CSV = (
     / "full_benchmark_all_models_20260331"
     / "model_comparison_results.csv"
 )
-SAMPLE_PATH = PROJECT_ROOT / "sample_inputs" / "synthetic_abnormal_like.csv"
+SAMPLE_PATH = PROJECT_ROOT / "sample_inputs" / "ptbxl_normal_ecg_00001.csv"
+SAMPLE_MANIFEST_PATH = PROJECT_ROOT / "sample_inputs" / "manifest.json"
 MODEL_NAME = "inception1d"
 
 WIDTH = 1600
@@ -73,12 +75,26 @@ def read_benchmark_summary() -> dict[str, str | float]:
     }
 
 
-def load_demo_state() -> tuple[np.ndarray, dict, list[str], dict[str, str | float]]:
+def read_sample_metadata(file_name: str) -> dict[str, str]:
+    with open(SAMPLE_MANIFEST_PATH, "r", encoding="utf-8") as handle:
+        samples = json.load(handle)
+    for sample in samples:
+        if sample.get("file_name") == file_name:
+            return sample
+    return {
+        "name": file_name,
+        "description": "Bundled demo input",
+        "source": "sample-inputs",
+    }
+
+
+def load_demo_state() -> tuple[np.ndarray, dict, list[str], dict[str, str | float], dict[str, str]]:
     ecg = np.loadtxt(SAMPLE_PATH, delimiter=",", dtype=np.float32)
     prediction = predict_single_window(ecg=ecg, model_name=MODEL_NAME, device="cpu")
     models = [model.name for model in list_available_models()]
     summary = read_benchmark_summary()
-    return ecg, prediction, models, summary
+    sample_meta = read_sample_metadata(SAMPLE_PATH.name)
+    return ecg, prediction, models, summary, sample_meta
 
 
 def draw_waveform(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], ecg: np.ndarray) -> None:
@@ -109,7 +125,7 @@ def draw_waveform(draw: ImageDraw.ImageDraw, box: tuple[int, int, int, int], ecg
 
 
 def create_demo_image() -> Path:
-    ecg, prediction, models, summary = load_demo_state()
+    ecg, prediction, models, summary, sample_meta = load_demo_state()
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
 
     image = Image.new("RGB", (WIDTH, HEIGHT), BG)
@@ -134,7 +150,7 @@ def create_demo_image() -> Path:
     draw.text((76, 104), "HeartBeat ECG Benchmark Demo", font=FONT_H1, fill=TEXT)
     wrapped(
         draw,
-        "Browser-based inference demo for the repository's fixed-window 12-lead ECG classification models. This preview uses a bundled synthetic sample and the latest Inception1D checkpoint.",
+        "Browser-based inference demo for the repository's fixed-window 12-lead ECG classification models. This preview uses a bundled PTB-XL example window and the latest Inception1D checkpoint.",
         (76, 182),
         FONT_BODY,
         MUTED,
@@ -172,8 +188,8 @@ def create_demo_image() -> Path:
     field_y = 492
     for label, value in [
         ("Model", prediction["model_name"]),
-        ("Built-in sample", "Synthetic abnormal-like waveform"),
-        ("CSV file upload", "synthetic_abnormal_like.csv"),
+        ("Built-in sample", sample_meta["name"]),
+        ("CSV file upload", "No file selected"),
     ]:
         draw.text((68, field_y), label, font=FONT_LABEL, fill=TEXT)
         rounded(draw, (68, field_y + 28, 732, field_y + 84), "#ffffff", outline="#d7d7d7", radius=18)
@@ -182,7 +198,7 @@ def create_demo_image() -> Path:
 
     rounded(draw, (68, 744, 252, 788), ACCENT, radius=18)
     draw.text((104, 756), "Run Inference", font=FONT_LABEL, fill="#ffffff")
-    draw.text((280, 756), "Ready. 5 model checkpoints and 2 demo samples available.", font=FONT_SMALL, fill=MUTED)
+    draw.text((280, 756), f"Ready. {len(models)} models and 4 bundled samples available.", font=FONT_SMALL, fill=MUTED)
 
     # Output panel
     draw.text((828, 392), "Output", font=FONT_LABEL, fill=ACCENT)
@@ -224,7 +240,7 @@ def create_demo_image() -> Path:
     draw.text((68, 868), "Waveform Preview", font=FONT_H2, fill=TEXT)
     draw.text(
         (68, 910),
-        "Synthetic sample waveform shown as it appears in the demo input preview. The inference above uses the repository's standard preprocessing pipeline.",
+        "Real PTB-XL example waveform shown as it appears in the demo input preview. The inference above uses the repository's standard preprocessing pipeline.",
         font=FONT_BODY,
         fill=MUTED,
     )
