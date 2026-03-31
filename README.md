@@ -9,7 +9,9 @@ The repository has two deliberately separate layers:
 
 It is intended as a **transparent portfolio project**, not as a clinical diagnostic system.
 
-![Latest full benchmark summary](results/full_benchmark_all_models_20260331/visualization/comprehensive_table.png)
+![HeartBeat web demo homepage preview](docs/images/web_demo_homepage.png)
+
+The screenshot above shows the deployable demo interface with a preloaded **PTB-XL example window**, bundled benchmark checkpoints, and the current default **Inception1D** model.
 
 ## At a Glance
 
@@ -20,7 +22,7 @@ It is intended as a **transparent portfolio project**, not as a clinical diagnos
 - **Imbalance handling:** label-preserving class-weighted loss
 - **Latest full benchmark winner:** Inception1D
 - **Deployment:** FastAPI + browser frontend + Docker
-- **Demo inputs:** bundled synthetic CSV samples or user-uploaded CSV
+- **Demo inputs:** bundled PTB-XL example windows, synthetic fallback CSVs, or user-uploaded CSV
 
 ## Problem Statement
 
@@ -126,9 +128,7 @@ The demo supports:
 - viewing waveform preview and class probabilities
 - defaulting to the strongest available model from the latest full benchmark run
 
-![HeartBeat web demo homepage preview](docs/images/web_demo_homepage.png)
-
-The preview above is generated from the current demo layout with a bundled **PTB-XL example window** and the default `Inception1D` checkpoint.
+The demo preview shown at the top of this README is generated from the current layout with a bundled **PTB-XL example window** and the default `Inception1D` checkpoint.
 
 Regenerate it with:
 
@@ -281,6 +281,8 @@ The latest full local benchmark rerun is recorded in:
 | Inception1D | **0.8767** | **0.8774** | **0.9495** | **460,226** | 0.285 |
 
 In this full benchmark run, **Inception1D** delivered the strongest overall discrimination performance and was also the smallest model by parameter count. **CNN1D** remained the fastest model at inference time, but the gap in runtime was small relative to the performance gain from **Inception1D**, making **Inception1D** the strongest practical default for the current repository state.
+
+![Latest full benchmark summary](results/full_benchmark_all_models_20260331/visualization/comprehensive_table.png)
 
 ### Visualization Artifacts
 
