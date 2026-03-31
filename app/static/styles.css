@@ -191,9 +191,19 @@ button:disabled {
     flex-wrap: wrap;
 }
 
+.action-row {
+    align-items: flex-start;
+}
+
+.action-row .status-text {
+    width: 100%;
+}
+
 .status-text {
     color: var(--muted);
-    font-size: 0.95rem;
+    display: block;
+    font-size: 0.92rem;
+    line-height: 1.45;
 }
 
 .result-panel {

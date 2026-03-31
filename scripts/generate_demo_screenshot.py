@@ -27,7 +27,7 @@ SAMPLE_MANIFEST_PATH = PROJECT_ROOT / "sample_inputs" / "manifest.json"
 MODEL_NAME = "inception1d"
 
 WIDTH = 1600
-HEIGHT = 1280
+HEIGHT = 1300
 
 BG = "#f3efe6"
 PANEL = "#fffdf8"
@@ -159,9 +159,9 @@ def create_demo_image() -> Path:
     draw.ellipse((1080, -120, 1760, 360), fill="#e4ebf4")
 
     hero = (40, 36, 1560, 336)
-    left_panel = (40, 368, 760, 784)
-    right_panel = (800, 368, 1560, 784)
-    waveform_panel = (40, 816, 1560, 1236)
+    left_panel = (40, 368, 760, 820)
+    right_panel = (800, 368, 1560, 820)
+    waveform_panel = (40, 848, 1560, 1258)
 
     rounded(draw, hero, PANEL, outline=BORDER, width=2, radius=32)
     rounded(draw, left_panel, PANEL, outline=BORDER, width=2)
@@ -219,9 +219,9 @@ def create_demo_image() -> Path:
         draw.text((86, field_y + 46), value, font=FONT_BODY, fill=TEXT)
         field_y += 106
 
-    rounded(draw, (68, 744, 252, 788), ACCENT, radius=18)
-    draw.text((104, 756), "Run Inference", font=FONT_LABEL, fill="#ffffff")
-    draw.text((280, 756), f"Ready. {len(models)} models and 4 bundled samples available.", font=FONT_SMALL, fill=MUTED)
+    rounded(draw, (68, 734, 252, 778), ACCENT, radius=18)
+    draw.text((104, 746), "Run Inference", font=FONT_LABEL, fill="#ffffff")
+    draw.text((68, 792), f"Ready. {len(models)} models and 4 bundled samples available.", font=FONT_SMALL, fill=MUTED)
 
     # Output panel
     draw.text((828, 392), "Output", font=FONT_LABEL, fill=ACCENT)
