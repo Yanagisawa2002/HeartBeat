@@ -117,8 +117,10 @@ The demo supports:
 - choosing a bundled sample input
 - uploading a numeric ECG CSV
 - selecting an available checkpoint
-- running one-window inference
+- switching between **single-model inference** and **compare-all-models** modes
+- running one-window inference against one model or all bundled models
 - viewing waveform preview and class probabilities
+- inspecting sample metadata for bundled PTB-XL examples and uploaded CSVs
 - defaulting to the strongest available model from the latest full benchmark run
 
 The demo preview shown at the top of this README is generated from the current layout with a bundled **PTB-XL example window** and the default `Inception1D` checkpoint.

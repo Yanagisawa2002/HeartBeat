@@ -43,3 +43,18 @@ class PredictResponse(BaseModel):
     input_shape: List[int]
     preprocessing_applied: bool
     checkpoint_path: str
+
+
+class PredictAllRequest(BaseModel):
+    ecg: List[List[float]] = Field(
+        ...,
+        description="Numeric ECG matrix in 12 x length or length x 12 format.",
+    )
+    model_names: Optional[List[str]] = Field(
+        default=None,
+        description="Optional subset of registered model names to compare.",
+    )
+
+
+class PredictAllResponse(BaseModel):
+    predictions: List[PredictResponse]

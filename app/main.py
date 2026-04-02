@@ -13,6 +13,8 @@ from fastapi.templating import Jinja2Templates
 from .schemas import (
     AvailableModelResponse,
     DemoConfigResponse,
+    PredictAllRequest,
+    PredictAllResponse,
     PredictRequest,
     PredictResponse,
     SampleInputResponse,
@@ -141,6 +143,24 @@ def _load_benchmark_summary() -> dict | None:
     }
 
 
+def _resolve_requested_models(model_names: list[str] | None = None) -> list[str]:
+    available_models = list_available_models()
+    available_names = [model.name for model in available_models]
+    if not available_names:
+        raise FileNotFoundError("No model checkpoints were found for demo inference.")
+
+    if not model_names:
+        return available_names
+
+    requested = [name.lower() for name in model_names]
+    missing = [name for name in requested if name not in available_names]
+    if missing:
+        raise FileNotFoundError(
+            "Requested checkpoint(s) not found for: " + ", ".join(sorted(set(missing)))
+        )
+    return requested
+
+
 @app.get("/", response_class=HTMLResponse)
 def index(request: Request) -> HTMLResponse:
     signal_spec = get_signal_spec(os.getenv("HEARTBEAT_CONFIG_PATH"))
@@ -224,6 +244,28 @@ def predict(payload: PredictRequest) -> PredictResponse:
         raise _prediction_error_response(exc) from exc
 
     return PredictResponse(**result)
+
+
+@app.post("/predict-all", response_model=PredictAllResponse)
+def predict_all(payload: PredictAllRequest) -> PredictAllResponse:
+    try:
+        model_names = _resolve_requested_models(payload.model_names)
+        ecg = np.asarray(payload.ecg, dtype=np.float32)
+        predictions = [
+            PredictResponse(
+                **predict_single_window(
+                    ecg=ecg,
+                    model_name=model_name,
+                    config_path=os.getenv("HEARTBEAT_CONFIG_PATH"),
+                    device=os.getenv("HEARTBEAT_DEVICE", "cpu"),
+                )
+            )
+            for model_name in model_names
+        ]
+    except Exception as exc:
+        raise _prediction_error_response(exc) from exc
+
+    return PredictAllResponse(predictions=predictions)
 
 
 @app.post("/predict-file", response_model=PredictResponse)

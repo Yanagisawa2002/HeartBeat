@@ -114,3 +114,17 @@ class TestWebDemoAPI(unittest.TestCase):
         )
 
         self.assertEqual(response.status_code, 400)
+
+    def test_predict_all_endpoint(self) -> None:
+        response = self.client.post(
+            "/predict-all",
+            json={
+                "ecg": np.random.randn(12, 1000).tolist(),
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertIn("predictions", payload)
+        self.assertEqual(len(payload["predictions"]), 1)
+        self.assertEqual(payload["predictions"][0]["model_name"], "cnn1d")

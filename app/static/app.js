@@ -3,6 +3,8 @@ const state = {
   samples: [],
   currentWaveform: null,
   currentInputLabel: null,
+  currentInputMeta: null,
+  inferenceMode: "single",
   demoConfig: window.HEARTBEAT_DEMO || {
     expectedLeads: 12,
     signalLength: 1000,
@@ -28,6 +30,16 @@ const elements = {
   metricShape: document.getElementById("metric-shape"),
   checkpointPath: document.getElementById("checkpoint-path"),
   waveformCanvas: document.getElementById("waveform-canvas"),
+  modeInputs: document.querySelectorAll('input[name="inference_mode"]'),
+  modeHelp: document.getElementById("mode-help"),
+  modelField: document.getElementById("model-field"),
+  sampleMetaCard: document.getElementById("sample-meta-card"),
+  sampleMetaName: document.getElementById("sample-meta-name"),
+  sampleMetaSource: document.getElementById("sample-meta-source"),
+  sampleMetaType: document.getElementById("sample-meta-type"),
+  sampleMetaDescription: document.getElementById("sample-meta-description"),
+  compareCard: document.getElementById("compare-card"),
+  compareTableBody: document.getElementById("compare-table-body"),
 };
 
 function setStatus(message, isError = false) {
@@ -243,8 +255,68 @@ function renderEmptyWaveform() {
   context.fillText("Select a sample or upload a valid ECG CSV to preview the waveform.", 60, canvas.height / 2);
 }
 
+function resetResultsView() {
+  elements.resultCard.classList.add("hidden");
+  elements.compareCard.classList.add("hidden");
+  elements.emptyState.classList.remove("hidden");
+}
+
+function summarizeSource(source) {
+  if (source === "ptb-xl-v1.0.1") {
+    return "PTB-XL example";
+  }
+  if (source === "synthetic-demo") {
+    return "Synthetic fallback";
+  }
+  if (source === "user-upload") {
+    return "User upload";
+  }
+  return source || "Unknown";
+}
+
+function inferInputType(meta) {
+  if (!meta) {
+    return "-";
+  }
+  if (meta.source === "ptb-xl-v1.0.1") {
+    return "Public ECG window";
+  }
+  if (meta.source === "synthetic-demo") {
+    return "Synthetic waveform";
+  }
+  if (meta.source === "user-upload") {
+    return "Local CSV";
+  }
+  return "Demo input";
+}
+
+function renderSampleMeta(meta) {
+  if (!meta) {
+    elements.sampleMetaCard.classList.add("hidden");
+    return;
+  }
+
+  elements.sampleMetaCard.classList.remove("hidden");
+  elements.sampleMetaName.textContent = meta.name || state.currentInputLabel || "Current input";
+  elements.sampleMetaSource.textContent = summarizeSource(meta.source);
+  elements.sampleMetaType.textContent = inferInputType(meta);
+  elements.sampleMetaDescription.textContent =
+    meta.description || "Current ECG input loaded for preview and inference.";
+}
+
+function setInferenceMode(mode) {
+  state.inferenceMode = mode === "compare" ? "compare" : "single";
+  const isCompare = state.inferenceMode === "compare";
+  elements.modelField.classList.toggle("hidden", isCompare);
+  elements.modeHelp.textContent = isCompare
+    ? "Run all bundled checkpoints on the current ECG window and compare their outputs side by side."
+    : "Run inference with one selected checkpoint on the current ECG window.";
+  resetResultsView();
+}
+
 function updateResultCard(result) {
   elements.emptyState.classList.add("hidden");
+  elements.compareCard.classList.add("hidden");
   elements.resultCard.classList.remove("hidden");
   elements.predictedLabel.textContent = result.predicted_label;
   elements.probabilityChip.textContent = `${(result.probability_abnormal * 100).toFixed(1)}% abnormal`;
@@ -255,9 +327,30 @@ function updateResultCard(result) {
   elements.checkpointPath.textContent = `Checkpoint: ${result.checkpoint_path}`;
 }
 
-function setCurrentWaveform(matrix, label) {
+function updateCompareCard(results) {
+  elements.emptyState.classList.add("hidden");
+  elements.resultCard.classList.add("hidden");
+  elements.compareCard.classList.remove("hidden");
+  elements.compareTableBody.innerHTML = "";
+
+  results.forEach((result) => {
+    const row = document.createElement("tr");
+    row.innerHTML = `
+      <td><strong>${result.model_name}</strong></td>
+      <td>${result.predicted_label}</td>
+      <td>${result.probability_abnormal.toFixed(4)}</td>
+      <td>${result.probability_normal.toFixed(4)}</td>
+    `;
+    elements.compareTableBody.appendChild(row);
+  });
+}
+
+function setCurrentWaveform(matrix, label, meta = null) {
   state.currentWaveform = matrix;
   state.currentInputLabel = label;
+  state.currentInputMeta = meta;
+  renderSampleMeta(meta);
+  resetResultsView();
   drawWaveform(matrix);
 }
 
@@ -279,7 +372,7 @@ async function loadSampleByNameWithOptions(fileName, options = {}) {
   const csvText = await response.text();
   const parsed = parseCsvText(csvText);
   const normalized = normalizeWaveformShape(parsed);
-  setCurrentWaveform(normalized, sample.name);
+  setCurrentWaveform(normalized, sample.name, sample);
   if (options.announce !== false) {
     setStatus(`Loaded sample: ${sample.name} (${sample.source}).`);
   }
@@ -289,7 +382,11 @@ async function loadUploadedFile(file) {
   const text = await readFileText(file);
   const parsed = parseCsvText(text);
   const normalized = normalizeWaveformShape(parsed);
-  setCurrentWaveform(normalized, file.name);
+  setCurrentWaveform(normalized, file.name, {
+    name: file.name,
+    source: "user-upload",
+    description: "CSV uploaded from the local browser session for one-window demo inference.",
+  });
   setStatus(`Loaded upload: ${file.name}.`);
 }
 
@@ -336,6 +433,12 @@ async function loadInitialState() {
   }
 }
 
+elements.modeInputs.forEach((input) => {
+  input.addEventListener("change", (event) => {
+    setInferenceMode(event.target.value);
+  });
+});
+
 elements.loadSampleButton.addEventListener("click", async () => {
   const fileName = elements.sampleSelect.value;
   if (!fileName) {
@@ -355,6 +458,8 @@ elements.csvFile.addEventListener("change", async (event) => {
   if (!file) {
     state.currentWaveform = null;
     state.currentInputLabel = null;
+    state.currentInputMeta = null;
+    renderSampleMeta(null);
     renderEmptyWaveform();
     return;
   }
@@ -364,6 +469,8 @@ elements.csvFile.addEventListener("change", async (event) => {
   } catch (error) {
     state.currentWaveform = null;
     state.currentInputLabel = null;
+    state.currentInputMeta = null;
+    renderSampleMeta(null);
     renderEmptyWaveform();
     setStatus(error.message, true);
   }
@@ -384,15 +491,18 @@ elements.form.addEventListener("submit", async (event) => {
   );
 
   try {
-    const response = await fetch("/predict", {
+    const endpoint = state.inferenceMode === "compare" ? "/predict-all" : "/predict";
+    const requestBody =
+      state.inferenceMode === "compare"
+        ? { ecg: state.currentWaveform }
+        : { model_name: modelName, ecg: state.currentWaveform };
+
+    const response = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({
-        model_name: modelName,
-        ecg: state.currentWaveform,
-      }),
+      body: JSON.stringify(requestBody),
     });
     const payload = await response.json();
 
@@ -400,7 +510,11 @@ elements.form.addEventListener("submit", async (event) => {
       throw new Error(payload.detail || "Inference request failed.");
     }
 
-    updateResultCard(payload);
+    if (state.inferenceMode === "compare") {
+      updateCompareCard(payload.predictions);
+    } else {
+      updateResultCard(payload);
+    }
     drawWaveform(state.currentWaveform);
     setStatus("Inference complete.");
   } catch (error) {
@@ -410,4 +524,5 @@ elements.form.addEventListener("submit", async (event) => {
   }
 });
 
+setInferenceMode("single");
 loadInitialState();

@@ -30,7 +30,7 @@
                         <li>Supports the repository's fixed-format ECG window task.</li>
                         <li>Loads checkpoints discovered in the configured checkpoint directory.</li>
                         <li>Lists every bundled checkpoint in the model selector for side-by-side demo use.</li>
-                        <li>Bundles synthetic sample inputs for UI and deployment testing.</li>
+                        <li>Bundles PTB-XL example windows plus synthetic fallback inputs for demo use.</li>
                     </ul>
                 {% if benchmark_summary %}
                 <div class="benchmark-note">
@@ -50,7 +50,21 @@
                     <h2>Select or Upload ECG Window</h2>
                 </div>
                 <form id="predict-form" class="form-stack">
-                    <label class="field">
+                    <fieldset class="mode-toggle" id="mode-toggle">
+                        <legend>Inference mode</legend>
+                        <label class="toggle-option">
+                            <input type="radio" name="inference_mode" value="single" checked>
+                            <span>Single model</span>
+                        </label>
+                        <label class="toggle-option">
+                            <input type="radio" name="inference_mode" value="compare">
+                            <span>Compare all models</span>
+                        </label>
+                    </fieldset>
+                    <p id="mode-help" class="supporting-text mode-help">
+                        Run inference with one selected checkpoint or compare all bundled benchmark models on the same ECG window.
+                    </p>
+                    <label class="field" id="model-field">
                         <span>Model</span>
                         <select id="model-select" name="model_name"></select>
                     </label>
@@ -72,6 +86,23 @@
                         or the transposed layout <strong>{{ signal_length }} x {{ leads|length }}</strong>.
                         Header rows are not supported. Bundled samples include PTB-XL example windows plus synthetic fallback demo inputs.
                     </p>
+                    <div id="sample-meta-card" class="sample-meta-card hidden">
+                        <div class="sample-meta-header">
+                            <p class="eyebrow">Current Input</p>
+                            <strong id="sample-meta-name">-</strong>
+                        </div>
+                        <div class="sample-meta-grid">
+                            <div class="sample-meta-item">
+                                <span>Source</span>
+                                <strong id="sample-meta-source">-</strong>
+                            </div>
+                            <div class="sample-meta-item">
+                                <span>Type</span>
+                                <strong id="sample-meta-type">-</strong>
+                            </div>
+                        </div>
+                        <p id="sample-meta-description" class="supporting-text sample-meta-description"></p>
+                    </div>
                     <div class="button-row action-row">
                         <button id="submit-button" type="submit">Run Inference</button>
                         <span id="status-text" class="status-text">Loading demo metadata...</span>
@@ -114,6 +145,24 @@
                         </div>
                     </div>
                     <p class="supporting-text" id="checkpoint-path"></p>
+                </div>
+                <div id="compare-card" class="compare-card hidden">
+                    <p class="supporting-text compare-copy">
+                        Side-by-side predictions for every available bundled benchmark model on the current ECG input.
+                    </p>
+                    <div class="compare-table-wrap">
+                        <table class="compare-table">
+                            <thead>
+                                <tr>
+                                    <th>Model</th>
+                                    <th>Predicted label</th>
+                                    <th>Abnormal prob.</th>
+                                    <th>Normal prob.</th>
+                                </tr>
+                            </thead>
+                            <tbody id="compare-table-body"></tbody>
+                        </table>
+                    </div>
                 </div>
             </section>
         </section>
