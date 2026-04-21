@@ -167,6 +167,15 @@ http://localhost:8000
 
 ### Run with Docker
 
+Pull the published image directly:
+
+```bash
+docker pull ghcr.io/yanagisawa2002/heartbeat:latest
+docker run -p 8000:8000 -e HEARTBEAT_DEVICE=cpu ghcr.io/yanagisawa2002/heartbeat:latest
+```
+
+Or build it locally from source:
+
 ```bash
 docker build -t heartbeat-web .
 docker run -p 8000:8000 -e HEARTBEAT_DEVICE=cpu heartbeat-web
@@ -180,10 +189,9 @@ docker compose up --build
 
 ### One-Click Demo Flow
 
-The Docker image bundles every benchmark checkpoint found under
-`artifacts/checkpoints/` at build time. In the current workspace, that means
-the container starts with **all five benchmark models available in the UI**
-without any extra volume mounts.
+The published demo image is built to include **all five benchmark checkpoints**
+under `artifacts/checkpoints/`, so the container starts with **all five
+benchmark models available in the UI** without any extra volume mounts.
 
 After the container starts:
 
@@ -214,10 +222,10 @@ The demo looks for checkpoints in:
 
 Important:
 
-- the Docker image bundles any `.pth` checkpoints present under `artifacts/checkpoints/` during build
-- in this workspace, the intended image includes **all five benchmark models**
+- the published GHCR image is built with the committed `.pth` checkpoints under `artifacts/checkpoints/`
+- the intended demo image includes **all five benchmark models**
 - the web UI lists every bundled model in the selector and defaults to **Inception1D**
-- if you build from a checkout without local checkpoint files, the UI still starts but inference remains unavailable until checkpoints are added
+- the repository also includes a GitHub Actions workflow that publishes the container image to GHCR on pushes to `main`
 
 See [artifacts/README.md](artifacts/README.md) for the expected layout.
 
@@ -316,15 +324,15 @@ Committed in this repository:
 - runtime configuration
 - selected summary results
 - bundled demo inputs, including a small number of PTB-XL example windows plus synthetic fallbacks
+- demo checkpoints required for the published Docker image
 
 Not committed by default:
 
 - raw PTB-XL data
 - processed splits
 - generated prediction artifacts
-- trained checkpoints in version control
 
-This keeps the public repository smaller and easier to inspect. A local or release build can still bundle demo checkpoints into the Docker image, but exact reruns of previously committed benchmark numbers are not guaranteed from a fresh checkout without the missing data artifacts.
+This keeps the public repository usable as a pullable demo image while still avoiding redistribution of the full dataset and intermediate training artifacts. Exact reruns of previously committed benchmark numbers are not guaranteed from a fresh checkout without the missing raw data and processed split artifacts.
 
 ## Project Structure
 

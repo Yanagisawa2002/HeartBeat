@@ -1,7 +1,7 @@
 # Demo Artifacts
 
 This directory stores lightweight inference artifacts used by the Dockerized
-web demo.
+web demo and the published container image.
 
 ## Bundled checkpoint layout
 
@@ -22,10 +22,11 @@ artifacts/
     `-- inception1d_best.pth
 ```
 
-When these files are present during `docker build`, the resulting image bundles
-all benchmark models and the web UI exposes them in the model selector.
+These checkpoint files are committed specifically so the published GHCR image
+can be built as a true one-click demo. When they are present during
+`docker build`, the resulting image bundles all benchmark models and the web UI
+exposes them in the model selector.
 
-The public repository may still omit checkpoint binaries from version control.
-If you build from a checkout that does not contain them, add the `.pth` files
-under `artifacts/checkpoints/` before building the image, or point the
-container to a different directory with `HEARTBEAT_CHECKPOINT_DIR`.
+If you want to replace them with your own trained checkpoints, keep the same
+file naming convention or point the container to a different directory with
+`HEARTBEAT_CHECKPOINT_DIR`.

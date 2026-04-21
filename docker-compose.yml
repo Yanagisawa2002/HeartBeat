@@ -1,5 +1,6 @@
 services:
   heartbeat-web:
+    image: ghcr.io/yanagisawa2002/heartbeat:latest
     build: .
     container_name: heartbeat-web
     ports:

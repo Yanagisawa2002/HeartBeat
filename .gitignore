@@ -22,3 +22,8 @@ artifacts/checkpoints/*.pth
 *.npz
 *.pkl
 *.pth
+!artifacts/checkpoints/cnn1d_best.pth
+!artifacts/checkpoints/lstm_best.pth
+!artifacts/checkpoints/resnet1d_best.pth
+!artifacts/checkpoints/hybrid_cnn_lstm_best.pth
+!artifacts/checkpoints/inception1d_best.pth
